@@ -17,6 +17,7 @@ import '../widgets/premium_picker.dart';
 import '../widgets/reicon_icon.dart';
 import '../widgets/server_sheet.dart';
 import '../widgets/top_notification.dart';
+import 'anipm_web_player_screen.dart';
 import 'full_player_screen.dart';
 
 /// Detail screen.
@@ -363,9 +364,9 @@ class _DetailScreenState extends State<DetailScreen> {
     if (stream == null) {
       if (!mounted) return;
       await _showResolveError(
-        _services.animekai.lastError ??
-            _services.anisuge.lastError ??
+        _services.anisuge.lastError ??
             _services.anikage.lastError ??
+            _services.anipm.lastError ??
             _services.miruro.lastError ??
             'No sources found for episode ${initial.number}. '
                 'Check your connection or try another server.',
@@ -396,6 +397,35 @@ class _DetailScreenState extends State<DetailScreen> {
     required ResolvedStream stream,
     required Episode initial,
   }) async {
+    // 0.2.25: AniPM returns a WebView embed, not an mpv stream —
+    // it plays in the fullscreen WebView player with the site's
+    // own controls, never in FullPlayerScreen.
+    if (stream.playback == StreamPlayback.webEmbed) {
+      await Navigator.of(context).push(
+        SmoothPageRoute<void>(
+          builder: (BuildContext context) => AnipmWebPlayerScreen(
+            store: _store,
+            anime: _anime,
+            episodes: _episodes,
+            initialEpisode: initial,
+            initialEmbedUrl: stream.url,
+            subDub: _subDub,
+            onEpisodeChanged: _onPlayerEpisodeChanged,
+            onResolveEpisode: (Episode episode) async {
+              return _services.resolveEpisode(
+                anime: _anime,
+                episode: episode.number,
+                subDub: _subDub,
+                store: _store,
+                debrid: _selectedDebrid,
+                server: _store.preferredServer,
+              );
+            },
+          ),
+        ),
+      );
+      return;
+    }
     await Navigator.of(context).push(
       SmoothPageRoute<void>(
         builder: (BuildContext context) => FullPlayerScreen(

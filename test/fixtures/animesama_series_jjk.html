@@ -1,0 +1,1021 @@
+<!doctype html>
+<html lang="fr">
+
+	<head>
+		
+<meta name="clckd" content="b31ee4983505f8e76071e409d45ec9f4" />
+
+
+<!-- Meta Tags -->
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<!-- « follow » (15/11/2026) : avant « nofollow », Google ne suivait aucun lien du site (fiches, saisons…) -->
+<meta name="robots" content="index, follow">
+
+<!-- Google Analytics -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-QK64GJ58E9"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-QK64GJ58E9');
+</script>
+
+<!-- Favicon -->
+<link rel="icon" type="image/png" sizes="32x32" href="/img/opti/icon.png?v=5">
+<link rel="apple-touch-icon" sizes="180x180" href="/img/appli/icone-apple-180.png">
+<!-- Appli (PWA) : description, couleur, icône ; installation gérée par js/defaut/appli.js -->
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#020306">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Anime-Sama">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<link rel="stylesheet" href="/css/appli.css?v=1792337067">
+<script defer src="/js/defaut/appli.js?v=1792420538"></script>
+
+<link rel="icon" href="/img/favicon.ico?v=4">
+
+<!-- CSS -->
+<!-- Anti-miroirs : si la page s'affiche sur un domaine qui n'est pas le nôtre, retour au vrai site (liste : /config/domaines.php) -->
+<script>(function(){var ok=["anime-sama.to","anime-sama.tv","anime-sama.si","anime-sama.org"],h=location.hostname.replace(/^www\./,'');if(ok.indexOf(h)===-1&&!/^(localhost|127\.0\.0\.1)$/.test(h)){location.replace('https://anime-sama.to'+location.pathname+location.search+location.hash);}})();</script>
+<link rel="preload" href="/fonts/outfit-latin-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/css/tailwind.css?v=1792337070">
+<link rel="stylesheet" href="/css/defaut.css?v=1794182838">
+<link rel="stylesheet" href="/css/carte.css?v=1795521655">
+<!-- Fond d'écran choisi dans le footer (appliqué avant l'affichage pour éviter un flash) -->
+<script>try{var fondSite=localStorage.getItem('fondSite');if(fondSite)document.documentElement.setAttribute('data-fond',fondSite);}catch(e){}</script>
+<!-- jQuery & JS -->
+<script src="/js/libs/jquery.min.js?v=3.7.1"></script>
+<script defer src="/js/defaut/defaut.js?v=1795228758"></script>
+<script defer src="/js/defaut/rangees.js?v=1792233832"></script>
+<!-- Cartes du site : menu ⋯ (Watchlist / Favoris / Vu) et webtoons en couleur -->
+<script defer src="/js/defaut/carte.js?v=1792420437"></script>
+<!-- Listes déroulantes du site (tri du catalogue, épisodes, lecteurs, chapitres…) -->
+<link rel="stylesheet" href="/css/deroulant.css?v=1792351032">
+<script defer src="/js/defaut/deroulant.js?v=1794435336"></script>
+<!-- La barre de défilement garde toujours sa place : la page ne se décale plus quand elle apparaît -->
+<style>html { scrollbar-gutter: stable; }</style>
+
+<!-- Enquête sur les pubs qui s'ouvrent toutes seules (inactif sauf ?debug_pub=1), avant Adcash -->
+<script src="/js/defaut/espion-pub.js?v=1792431616"></script>
+<!-- Adcash -->
+<script>
+/* PUBLICITÉS ADCASH, ISOLÉES
+   aclib.js n'est plus chargé dans la page : chaque emplacement <div data-adcash-zone="…"> reçoit une
+   petite iframe (/pub/cadre-adcash.html) qui charge Adcash chez elle. Ses scripts ne voient donc
+   plus la page : fini le lecteur caché (display:none) et la pop-under rattachée aux bandeaux,
+   qui ne peut plus se déclencher que sur un clic dans le bandeau lui-même.
+   Un bandeau non rempli (pas de pub à afficher) est replié, comme avant.
+
+   COMPTEUR : 1 page sur 20 envoie, en quittant, ce qui s'est passé pour chaque emplacement
+   (demandé / rempli / vu au moins 1 s à moitié à l'écran) à /stats/v.php.
+   Résultats dans /systemas/pubs.php (×20), à comparer avec les tableaux de bord des régies. */
+(function () {
+    var TAILLES = { '160x600': [160, 600], '728x90': [728, 90], '300x250': [300, 250], '320x50': [320, 50], '320x100': [320, 100], '300x100': [300, 100], '468x60': [468, 60], '250x250': [250, 250] };
+    var ZONES = { '8653010': '160x600', '8653006': '160x600', '8653014': '728x90', '8653002': '300x250' };
+    var ECHANTILLON = 20;
+    var compte = Math.random() < 1 / ECHANTILLON || /[?&]compteur=1/.test(location.search);   // ?compteur=1 : forcer (essais)
+    var suivi = [];
+
+    var obs = ('IntersectionObserver' in window) ? new IntersectionObserver(function (entrees) {
+        entrees.forEach(function (e) {
+            var s = e.target.__pub; if (!s) return;
+            clearTimeout(s.minuteur);
+            if (e.isIntersecting && e.intersectionRatio >= 0.5) s.minuteur = setTimeout(function () { s.vu = 1; obs.unobserve(e.target); }, 1000);
+        });
+    }, { threshold: [0, 0.5] }) : null;
+
+    function suivre(el, nom) {
+        var s = { z: nom, rempli: 0, vu: 0 };
+        el.__pub = s; suivi.push(s);
+        if (obs) obs.observe(el);
+        return s;
+    }
+
+    // Emplacement Onclicka qui ne peut pas servir : on remet la zone Adcash notée dans data-repli
+    function versRepli(el) {
+        var r = el.getAttribute('data-repli');
+        el.removeAttribute('data-onclicka-zone'); el.removeAttribute('data-taille'); el.removeAttribute('data-adcash-lance');
+        if (r) { el.setAttribute('data-adcash-zone', r); setTimeout(lancer, 0); }
+    }
+
+    function lancer() {
+        var zones = document.querySelectorAll('[data-adcash-zone]:not([data-adcash-lance]),[data-onclicka-zone]:not([data-adcash-lance])');
+        for (var i = 0; i < zones.length; i++) {
+            var el = zones[i];
+            if (!el.offsetParent && getComputedStyle(el).position !== 'fixed') continue;   // caché (colonnes sur téléphone)
+            // Onclicka (11/11/2026) : <div data-onclicka-zone="ID" data-taille="160x600" data-repli="zone Adcash">
+            var oc = el.getAttribute('data-onclicka-zone');
+            var z = oc || el.getAttribute('data-adcash-zone');
+            var t = TAILLES[el.getAttribute('data-taille') || ZONES[z]] || TAILLES['300x250'];
+            // Trop large pour l'écran (728×90 sur téléphone) : pas demandé… sauf data-ajuster, réduit à la largeur dispo
+            var echelle = 1;
+            var adapter = false;
+            if (oc && window.innerWidth < t[0] + 16) { versRepli(el); continue; }   // trop large : la pub Adcash habituelle
+            if (window.innerWidth < t[0] + 16) {
+                if (z === '8653014') {
+                    // Téléphone : Adcash sert ici sa version mobile (8653016, l'essentiel des revenus) ;
+                    // le cadre prend la largeur de l'écran puis la taille exacte de la pub reçue (11/11/2026)
+                    t = [Math.min(t[0], window.innerWidth - 16), 100]; adapter = true;
+                } else if (!el.hasAttribute('data-ajuster')) continue;
+                else echelle = (window.innerWidth - 16) / t[0];
+            }
+            el.setAttribute('data-adcash-lance', '1');
+            var f = document.createElement('iframe');
+            f.src = oc ? '/pub/cadre-onclicka.html?z=' + oc : '/pub/cadre-adcash.html?z=' + z;
+            f.width = t[0]; f.height = t[1];
+            f.title = 'Publicité';
+            f.setAttribute('scrolling', 'no');
+            f.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox');
+            // taille imposée : le CSS des colonnes de côté met « height:auto » aux iframes
+            f.style.cssText = 'border:0;display:block;margin:0 auto;width:' + t[0] + 'px;height:' + t[1] + 'px';
+            if (echelle < 1) {
+                f.style.transform = 'scale(' + echelle + ')';
+                f.style.transformOrigin = '0 0';
+                el.style.width = Math.floor(t[0] * echelle) + 'px';
+                el.style.height = Math.floor(t[1] * echelle) + 'px';
+                el.style.margin = '0 auto';
+                el.style.overflow = 'hidden';   // l'iframe garde sa taille réelle sous le scale()
+            } else {
+                f.style.maxWidth = '100%';
+            }
+            el.appendChild(f);
+            var s = suivre(el, oc ? 'oc-' + oc : z);
+            s.cadre = f; s.el = el; s.adapter = adapter;
+        }
+        // Autres régies suivies par le compteur (emplacements marqués data-pub-suivi)
+        var autres = document.querySelectorAll('[data-pub-suivi]:not([data-pub-lance])');
+        for (var j = 0; j < autres.length; j++) {
+            if (!autres[j].offsetParent) continue;
+            autres[j].setAttribute('data-pub-lance', '1');
+            suivre(autres[j], autres[j].getAttribute('data-pub-suivi')).autre = autres[j];
+        }
+    }
+
+    window.addEventListener('message', function (e) {
+        if (e.origin !== location.origin || !e.data || (e.data.asPub !== 'adcash' && e.data.asPub !== 'onclicka')) return;
+        for (var i = 0; i < suivi.length; i++) {
+            var s = suivi[i];
+            if (s.cadre && s.cadre.contentWindow === e.source) {
+                s.rempli = e.data.rempli ? 1 : 0;
+                if (!s.rempli && e.data.asPub === 'onclicka' && s.el && s.el.hasAttribute('data-repli')) {   // Onclicka vide : Adcash à la place
+                    s.cadre.remove(); s.cadre = null; versRepli(s.el); continue;
+                }
+                if (!s.rempli) { s.cadre.style.display = 'none'; if (s.el) { s.el.style.width = ''; s.el.style.height = ''; } }   // rien à afficher : on replie
+                if (s.rempli && s.adapter && e.data.h > 10) {   // taille exacte de la pub mobile
+                    s.cadre.style.height = e.data.h + 'px';
+                    if (e.data.w > 10 && e.data.w <= window.innerWidth - 16) s.cadre.style.width = e.data.w + 'px';
+                }
+                if (s.el) s.el.dispatchEvent(new CustomEvent('pub-remplie', { detail: !!s.rempli }));
+            }
+        }
+    });
+
+    var envoye = false;
+    function envoyer() {
+        if (!compte || envoye) return;
+        envoye = true;
+        suivi.forEach(function (s) { if (s.autre) s.rempli = s.autre.offsetHeight > 50 ? 1 : 0; });
+        var d = {
+            s: location.pathname.indexOf('/refonte/') === 0 ? 'refonte' : 'site',
+            m: window.innerWidth < 1024 ? 1 : 0,
+            z: suivi.map(function (s) { return [s.z, s.rempli, s.vu]; })
+        };
+        try { navigator.sendBeacon('/stats/v.php', JSON.stringify(d)); } catch (e) {}
+    }
+    document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'hidden') envoyer(); });
+    window.addEventListener('pagehide', envoyer);
+
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', lancer);
+    else lancer();
+})();
+</script>
+
+<!-- NAV BAR -->
+<nav class="asn-navbar">
+    <!-- Menu burger mobile -->
+    <button class="asn-burger">
+        <svg class="w-6 h-6" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
+            <path d="M0 3h20v2H0V3zm0 6h20v2H0V9zm0 6h20v2H0v-2z"></path>
+        </svg>
+    </button>
+
+    <!-- Searchbar mobile -->
+    <div class="asn-mobile-search">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+            <path d="M9 9a2 2 0 114 0 2 2 0 01-4 0z" />
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a4 4 0 00-3.446 6.032l-2.261 2.26a1 1 0 101.414 1.415l2.261-2.261A4 4 0 1011 5z" clip-rule="evenodd" />
+        </svg>
+        <input name="search_text" type="search" placeholder="Rechercher..." autocomplete="off" spellcheck="false"/>
+    </div>
+    <!-- Mobile Results (outside search box) -->
+    <div id="asn-result-mobile"></div>
+
+    <!-- Logo -->
+    <a href="/" class="asn-logo">
+        <img class="asn-logo-desktop" src="/img/opti/logo_banniere.webp" alt="Anime-Sama"/>
+        <img class="asn-logo-mobile" src="/img/opti/logo.webp" alt="Anime-Sama"/>
+    </a>
+
+    <!-- Donate -->
+    <a href="https://www.paypal.com/donate/?hosted_button_id=3FBNLMGT3JAJ2" class="asn-donate-btn">
+        <img src="/img/opti/flag_pal.webp" alt="PayPal"/>
+    </a>
+
+    <!-- Social Discord -->
+    <a href="https://discord.gg/mKbYYbmxY8" class="asn-social-link">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" class="bi bi-discord" viewBox="0 0 16 16">
+            <path d="M13.545 2.907a13.2 13.2 0 0 0-3.257-1.011.05.05 0 0 0-.052.025c-.141.25-.297.577-.406.833a12.2 12.2 0 0 0-3.658 0 8 8 0 0 0-.412-.833.05.05 0 0 0-.052-.025c-1.125.194-2.22.534-3.257 1.011a.04.04 0 0 0-.021.018C.356 6.024-.213 9.047.066 12.032q.003.022.021.037a13.3 13.3 0 0 0 3.995 2.02.05.05 0 0 0 .056-.019q.463-.63.818-1.329a.05.05 0 0 0-.01-.059l-.018-.011a9 9 0 0 1-1.248-.595.05.05 0 0 1-.02-.066l.015-.019q.127-.095.248-.195a.05.05 0 0 1 .051-.007c2.619 1.196 5.454 1.196 8.041 0a.05.05 0 0 1 .053.007q.121.1.248.195a.05.05 0 0 1-.004.085 8 8 0 0 1-1.249.594.05.05 0 0 0-.03.03.05.05 0 0 0 .003.041c.24.465.515.909.817 1.329a.05.05 0 0 0 .056.019 13.2 13.2 0 0 0 4.001-2.02.05.05 0 0 0 .021-.037c.334-3.451-.559-6.449-2.366-9.106a.03.03 0 0 0-.02-.019m-8.198 7.307c-.789 0-1.438-.724-1.438-1.612s.637-1.613 1.438-1.613c.807 0 1.45.73 1.438 1.613 0 .888-.637 1.612-1.438 1.612m5.316 0c-.788 0-1.438-.724-1.438-1.612s.637-1.613 1.438-1.613c.807 0 1.451.73 1.438 1.613 0 .888-.631 1.612-1.438 1.612"/>
+        </svg>
+    </a>
+
+    <!-- Social X 
+    <a href="https://x.com/anime_samafr" class="asn-social-link">
+        <svg viewBox="0 0 1200 1227" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M714.163 519.284L1160.89 0H1055.03L667.137 450.887L357.328 0H0L468.492 681.821L0 1226.37H105.866L515.491 750.218L842.672 1226.37H1200L714.137 519.284H714.163ZM569.165 687.828L521.697 619.934L144.011 79.6944H306.615L611.412 515.685L658.88 583.579L1055.08 1150.3H892.476L569.165 687.854V687.828Z" fill="currentColor"/>
+        </svg>
+    </a>-->
+
+    <!-- Desktop Navigation -->
+    <div class="asn-nav-desktop">
+        <!-- Search -->
+        <div class="asn-desktop-search">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M9 9a2 2 0 114 0 2 2 0 01-4 0z" />
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a4 4 0 00-3.446 6.032l-2.261 2.26a1 1 0 101.414 1.415l2.261-2.261A4 4 0 1011 5z" clip-rule="evenodd" />
+            </svg>
+            <input name="search_text" type="search" placeholder="Rechercher une œuvre..." autocomplete="off" spellcheck="false"/>
+            <div id="asn-result-desktop"></div>
+        </div>
+
+        <!-- Catalogue -->
+        <a href="/catalogue" class="asn-nav-link">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2 2H4a2 2 0 01-2-2v-4z" />
+            </svg>
+            <span>Catalogue</span>
+        </a>
+
+        <!-- Planning -->
+        <a href="/planning" class="asn-nav-link">
+			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+				<path d="M12.75 12.75a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM7.5 15.75a.75.75 0 100-1.5.75.75 0 000 1.5zM8.25 17.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM9.75 15.75a.75.75 0 100-1.5.75.75 0 000 1.5zM10.5 17.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM12 15.75a.75.75 0 100-1.5.75.75 0 000 1.5zM12.75 17.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM14.25 15.75a.75.75 0 100-1.5.75.75 0 000 1.5zM15 17.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM16.5 15.75a.75.75 0 100-1.5.75.75 0 000 1.5zM15 12.75a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM16.5 13.5a.75.75 0 100-1.5.75.75 0 000 1.5z" />
+				<path fill-rule="evenodd" d="M6.75 2.25A.75.75 0 017.5 3v1.5h9V3A.75.75 0 0118 3v1.5h.75a3 3 0 013 3v11.25a3 3 0 01-3 3H5.25a3 3 0 01-3-3V7.5a3 3 0 013-3H6V3a.75.75 0 01.75-.75zm13.5 9a1.5 1.5 0 00-1.5-1.5H5.25a1.5 1.5 0 00-1.5 1.5v7.5a1.5 1.5 0 001.5 1.5h13.5a1.5 1.5 0 001.5-1.5v-7.5z" clip-rule="evenodd" />
+			</svg>
+            <span>Planning</span>
+        </a>
+
+        <!-- Aide -->
+        <a href="/aide" class="asn-nav-link">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                <path fill-rule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12Zm11.378-3.917c-.89-.777-2.366-.777-3.255 0a.75.75 0 0 1-.988-1.129c1.454-1.272 3.776-1.272 5.23 0 1.513 1.324 1.513 3.518 0 4.842a3.75 3.75 0 0 1-.837.552c-.676.328-1.028.774-1.028 1.152v.75a.75.75 0 0 1-1.5 0v-.75c0-1.279 1.06-2.107 1.875-2.502.182-.088.351-.199.503-.331.83-.727.83-1.857 0-2.584ZM12 18a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Z" clip-rule="evenodd" />
+            </svg>
+            <span>Aide</span>
+        </a>
+
+        <!-- Profil -->
+        <a href="/profil" class="asn-nav-link">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-6-3a2 2 0 11-4 0 2 2 0 014 0zm-2 4a5 5 0 00-4.546 2.916A5.986 5.986 0 0010 16a5.986 5.986 0 004.546-2.084A5 5 0 0010 11z" clip-rule="evenodd" />
+            </svg>
+            <span>Profil (Déconnecté)</span>        </a>
+    </div>
+</nav>
+
+<!-- MOBILE MENU DRAWER -->
+<div class="asn-mobile-menu">
+    <div class="asn-menu-backdrop"></div>
+    
+    <nav class="asn-menu-panel">
+        <div class="asn-menu-nav">
+            <a href="/catalogue">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M7 3a1 1 0 000 2h6a1 1 0 100-2H7zM4 7a1 1 0 011-1h10a1 1 0 110 2H5a1 1 0 01-1-1zM2 11a2 2 0 012-2h12a2 2 0 012 2v4a2 2 0 01-2 2H4a2 2 0 01-2-2v-4z" />
+                </svg>
+                <span>Catalogue</span>
+            </a>
+            <a href="/planning">
+				<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+					<path d="M12.75 12.75a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM7.5 15.75a.75.75 0 100-1.5.75.75 0 000 1.5zM8.25 17.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM9.75 15.75a.75.75 0 100-1.5.75.75 0 000 1.5zM10.5 17.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM12 15.75a.75.75 0 100-1.5.75.75 0 000 1.5zM12.75 17.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM14.25 15.75a.75.75 0 100-1.5.75.75 0 000 1.5zM15 17.25a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM16.5 15.75a.75.75 0 100-1.5.75.75 0 000 1.5zM15 12.75a.75.75 0 11-1.5 0 .75.75 0 011.5 0zM16.5 13.5a.75.75 0 100-1.5.75.75 0 000 1.5z" />
+					<path fill-rule="evenodd" d="M6.75 2.25A.75.75 0 017.5 3v1.5h9V3A.75.75 0 0118 3v1.5h.75a3 3 0 013 3v11.25a3 3 0 01-3 3H5.25a3 3 0 01-3-3V7.5a3 3 0 013-3H6V3a.75.75 0 01.75-.75zm13.5 9a1.5 1.5 0 00-1.5-1.5H5.25a1.5 1.5 0 00-1.5 1.5v7.5a1.5 1.5 0 001.5 1.5h13.5a1.5 1.5 0 001.5-1.5v-7.5z" clip-rule="evenodd" />
+				</svg>
+                <span>Planning</span>
+            </a>
+            <a href="/aide">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                    <path fill-rule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12Zm11.378-3.917c-.89-.777-2.366-.777-3.255 0a.75.75 0 0 1-.988-1.129c1.454-1.272 3.776-1.272 5.23 0 1.513 1.324 1.513 3.518 0 4.842a3.75 3.75 0 0 1-.837.552c-.676.328-1.028.774-1.028 1.152v.75a.75.75 0 0 1-1.5 0v-.75c0-1.279 1.06-2.107 1.875-2.502.182-.088.351-.199.503-.331.83-.727.83-1.857 0-2.584ZM12 18a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Z" clip-rule="evenodd" />
+                </svg>
+                <span>Aide</span>
+            </a>
+
+            <a href="https://discord.gg/mKbYYbmxY8">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" class="bi bi-discord" viewBox="0 0 16 16">
+                    <path d="M13.545 2.907a13.2 13.2 0 0 0-3.257-1.011.05.05 0 0 0-.052.025c-.141.25-.297.577-.406.833a12.2 12.2 0 0 0-3.658 0 8 8 0 0 0-.412-.833.05.05 0 0 0-.052-.025c-1.125.194-2.22.534-3.257 1.011a.04.04 0 0 0-.021.018C.356 6.024-.213 9.047.066 12.032q.003.022.021.037a13.3 13.3 0 0 0 3.995 2.02.05.05 0 0 0 .056-.019q.463-.63.818-1.329a.05.05 0 0 0-.01-.059l-.018-.011a9 9 0 0 1-1.248-.595.05.05 0 0 1-.02-.066l.015-.019q.127-.095.248-.195a.05.05 0 0 1 .051-.007c2.619 1.196 5.454 1.196 8.041 0a.05.05 0 0 1 .053.007q.121.1.248.195a.05.05 0 0 1-.004.085 8 8 0 0 1-1.249.594.05.05 0 0 0-.03.03.05.05 0 0 0 .003.041c.24.465.515.909.817 1.329a.05.05 0 0 0 .056.019 13.2 13.2 0 0 0 4.001-2.02.05.05 0 0 0 .021-.037c.334-3.451-.559-6.449-2.366-9.106a.03.03 0 0 0-.02-.019m-8.198 7.307c-.789 0-1.438-.724-1.438-1.612s.637-1.613 1.438-1.613c.807 0 1.45.73 1.438 1.613 0 .888-.637 1.612-1.438 1.612m5.316 0c-.788 0-1.438-.724-1.438-1.612s.637-1.613 1.438-1.613c.807 0 1.451.73 1.438 1.613 0 .888-.631 1.612-1.438 1.612"/>
+                </svg>
+                <span>Discord</span>
+            </a>
+            
+            <!-- X
+            <a href="https://x.com/anime_samafr">
+                <svg viewBox="0 0 1200 1227" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M714.163 519.284L1160.89 0H1055.03L667.137 450.887L357.328 0H0L468.492 681.821L0 1226.37H105.866L515.491 750.218L842.672 1226.37H1200L714.137 519.284H714.163ZM569.165 687.828L521.697 619.934L144.011 79.6944H306.615L611.412 515.685L658.88 583.579L1055.08 1150.3H892.476L569.165 687.854V687.828Z" fill="currentColor"/>
+                </svg>
+                <span>X</span>
+            </a>-->
+
+            <a href="/profil">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-6-3a2 2 0 11-4 0 2 2 0 014 0zm-2 4a5 5 0 00-4.546 2.916A5.986 5.986 0 0010 16a5.986 5.986 0 004.546-2.084A5 5 0 0010 11z" clip-rule="evenodd" />
+                </svg>
+                <span>Profil (Déconnecté)</span>            </a>
+        </div>
+    </nav>
+</div>
+
+<!-- Scroll to Top Button -->
+<div style="z-index:300;" id="scrollProgressWrapper">
+    <svg id="scrollProgressSvg" width="60" height="60" viewBox="0 0 60 60" class="absolute top-0 left-0 z-10" style="opacity: 1; transition: opacity 0.3s ease; pointer-events: none;">
+        <circle cx="30" cy="30" r="26" stroke="#0c4a6e" stroke-width="4" fill="none" stroke-linecap="round" />
+    </svg>
+
+	<button onclick="topFunction()" id="topBtn" style="background: rgba(39, 56, 70, 0.3);" class="pointer-events-auto rounded-full p-2 w-12 h-12 flex items-center justify-center hover:opacity-80 transition-all duration-200 z-20 relative">
+		<svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-black" viewBox="0 0 20 20" fill="currentColor">
+		<path fill-rule="evenodd" d="M3.293 9.707a1 1 0 010-1.414l6-6a1 1 0 011.414 0l6 6a1 1 0 01-1.414 1.414L11 5.414V17a1 1 0 11-2 0V5.414L4.707 9.707a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+		</svg>
+	</button>
+</div>
+
+		<meta name="keywords" content="Jujutsu Kaisen, Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen, Sorcery Fight, JJK, JUJUTSU KAISEN Season 3: The Culling Game Part 1, anime-sama, anime, scan, anime sama, vostfr, vf, streaming, streaming vostfr, streaming vf, sans pubs, streaming sans pubs, streaming scan">
+		<meta name="description" content="Plus de 10 000 morts et disparus sont recensés chaque année au Japon. Les sentiments négatifs que relâchent les êtres humains sont en cause. Souffrance, regrets, humiliation : leur concentration dans un même endroit engendre des malédictions souvent mortelles...
+C'est ce que va découvrir Yuji Itadori, lycéen et membre du club d'occultisme. Il ne croit pas aux fantômes, mais il est doté d'une force physique hors norme qui représente un véritable atout pour les missions du groupe... jusqu'à ce que l'une d'elles prenne une mauvaise tournure. La relique qu'ils dénichent, le doigt découpé d'un démon millénaire, attire les monstres ! Sans réfléchir : le jeune homme avale la relique pour briser la malédiction ! Maintenant, il se trouve possédé par Ryômen Sukuna, le célèbre démon à deux visages. Cependant, contre toute attente, Yuji est toujours capable de garder le contrôle de son corps. Mais en dépit de cela, il est condamné à mort par l'organisation des exorcistes... Une décision qui ne pourra être repoussée qu'à une seule condition : trouver tous les doigts de Sukuna afin d'écarter la menace une bonne fois pour toutes !">
+		<meta property="og:image" content="https://raw.githubusercontent.com/Anime-Sama/IMG/img/contenu/jujutsu-kaisen.jpg"/>
+		<meta property="og:image:width" content="800">
+		<meta property="og:image:height" content="450">
+		<meta property="og:image:type" content="image/jpeg"/>
+		<meta itemprop="image" content="https://raw.githubusercontent.com/Anime-Sama/IMG/img/contenu/jujutsu-kaisen.jpg"/>
+		<title>Jujutsu Kaisen | Anime-Sama - Streaming et catalogage d'animes et scans.</title>
+		<link rel="canonical" href="https://anime-sama.to/catalogue/jujutsu-kaisen/" />
+		<script type="text/javascript" src='../../js/contenu/script_oeuvre.js?filever=12018'defer></script>
+
+	</head>
+
+	<body>
+
+		<div id="blocEntier" class="grid grid-cols-8 pb-16">
+
+	<div id="sousBlocLeft" style="margin-top: 600px; margin-left: 20px;" class="hidden lg:block">
+		<div id="bannLeft" class="ad-container">
+		<span class="ad-label">Publicité</span>
+			<a href="https://korbo.fr/jeux/animedle?utm_source=anime-sama&utm_medium=banniere&utm_campaign=animedle-sky" target="_blank"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/autres/korbo_animedle_skyscraper.png" alt="Korbo - Skyscraper Animedle" loading="lazy" style="max-width:100%; height:auto; border-radius:6px;"></a>
+			<div class="ad-content"><div data-onclicka-zone="6091760" data-taille="160x600"></div></div>
+			<div class="ad-content"><div data-adcash-zone="8653010" data-taille="160x600"></div></div>
+			<!--<a href="https://www.eneba.com/fr/?af_id=Leynoor&currency=EUR&region=global" target="_blank"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/autres/eneba_skyscraper.jpg" alt="Eneba - Jeux moins chers" loading="lazy" style="max-width:100%; height:auto; border-radius:6px;"></a>-->
+		</div>
+	</div>
+
+	<div id="sousBlocMiddle" class="col-span-8 mx-3 lg:col-span-6 lg:mx-0 mt-6 z-20">
+			<div class="mx-3 md:mx-10">
+				
+				<!-- LIEN BANDE ANNONCE -->
+				<script>$(document).ready(function(){$("#bandeannonce").attr("src", "https://www.youtube.com/embed/Xz5bOFNbjnI");});</script>
+
+				<link rel="stylesheet" href="/css/cards.css?v=1792233831">
+<link rel="stylesheet" href="/css/oeuvre.css?v=1792337068">
+<script defer src="/js/contenu/oeuvre.js?v=1792262921"></script>
+
+<script>
+/* Cartes des saisons / scans, appelées depuis l'index.php de chaque œuvre :
+   panneauAnime("nom", "saison1/vostfr"); panneauScan("nom", "scan/vf"); */
+var OE_BASE = "\/catalogue\/jujutsu-kaisen\/";
+var OE_IMG = "https:\/\/cdn.jsdelivr.net\/gh\/Anime-Sama\/IMG@img\/contenu\/thumb\/jujutsu-kaisen.webp";
+function oePanneau(nom, url, scan) {
+    var e = function (s) { return String(s).replace(/[&<>"]/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); };
+    var lien = /^(https?:)?\//.test(url) ? url : OE_BASE + url;
+    document.write('<a href="' + e(lien) + '" class="oe-panneau' + (scan ? ' oe-panneau-scan' : '') + '">'
+        + '<img src="' + e(OE_IMG) + '" alt="" loading="lazy" decoding="async">'
+        + '<span class="oe-panneau-nom' + (nom.length > 30 ? ' oe-long' : '') + '">' + e(nom) + '</span></a>');
+}
+function panneauAnime(nom, url) { oePanneau(nom, url, false); }
+function panneauScan(nom, url) { oePanneau(nom, url, true); }
+</script>
+
+<div class="oe-page">
+
+<!-- ============ EN-TÊTE ============ -->
+<section class="oe-hero">
+    <div class="oe-fond" aria-hidden="true">
+        <img src="/img/grandes/jujutsu-kaisen-1280.webp" srcset="/img/grandes/jujutsu-kaisen-780.webp 780w, /img/grandes/jujutsu-kaisen-1280.webp 1280w, /img/grandes/jujutsu-kaisen-1920.webp 1920w" sizes="(max-width: 767px) 100vw, 75vw" alt="" fetchpriority="high" decoding="async">
+    </div>
+
+    <div class="oe-hero-contenu">
+        <div class="oe-affiche">
+            <img src="https://image.tmdb.org/t/p/w342/w2Shg7bI5WB7LINt1KxB7eihO8s.jpg" alt="Jujutsu Kaisen" decoding="async">
+        </div>
+
+        <div class="oe-tete">
+                        <div class="oe-badges">
+                                                <span class="type-badge">Anime</span>
+                                                                <span class="type-badge scan">Scans</span>
+                                                            </div>
+            
+            <h1 id="titreOeuvre" class="oe-titre">Jujutsu Kaisen</h1>
+                        <p id="titreAlter" class="oe-alters">Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen, Sorcery Fight, JJK, JUJUTSU KAISEN Season 3: The Culling Game Part 1</p>
+            
+                        <p class="oe-meta">2020<span class="oe-point">·</span>Série TV<span class="oe-point">·</span>MAPPA<span class="oe-point">·</span>Terminé</p>
+            
+                        <div class="oe-notes">
+                                <a class="oe-note" href="https://anilist.co/anime/113415" target="_blank" rel="noopener" title="Note moyenne sur AniList">
+                    <span class="oe-note-quoi">Anime</span>
+                    <span class="oe-note-etoile"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.6" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z"/></svg></span>
+                    <b>8,4</b><span class="oe-note-sur">/10</span>
+                </a>
+                                <a class="oe-note" href="https://anilist.co/manga/101517" target="_blank" rel="noopener" title="Note moyenne sur AniList">
+                    <span class="oe-note-quoi">Manga</span>
+                    <span class="oe-note-etoile"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.6" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z"/></svg></span>
+                    <b>8,0</b><span class="oe-note-sur">/10</span>
+                </a>
+                            </div>
+            
+            <div class="oe-actions">
+                <button id="addWatchlist" class="action-btn btn-watchlist" type="button">
+                    <span id="plusWatchlist"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.6" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg></span><span id="checkedWatchlist" class="hidden"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.6" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg></span>
+                    <span id="textWatchlist">Watchlist</span>
+                </button>
+                <button id="addFavoris" class="action-btn btn-favoris" type="button">
+                    <span id="plusFavoris"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.6" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M11.48 3.499a.562.562 0 0 1 1.04 0l2.125 5.111a.563.563 0 0 0 .475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 0 0-.182.557l1.285 5.385a.562.562 0 0 1-.84.61l-4.725-2.885a.562.562 0 0 0-.586 0L6.982 20.54a.562.562 0 0 1-.84-.61l1.285-5.386a.562.562 0 0 0-.182-.557l-4.204-3.602a.562.562 0 0 1 .321-.988l5.518-.442a.563.563 0 0 0 .475-.345L11.48 3.5Z"/></svg></span><span id="checkedFavoris" class="hidden"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.6" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg></span>
+                    <span id="textFavoris">Favoris</span>
+                </button>
+                <button id="addVu" class="action-btn btn-vu" type="button">
+                    <span id="plusVu"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.6" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/></svg></span><span id="checkedVu" class="hidden"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.6" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg></span>
+                    <span id="textVu">Vu</span>
+                </button>
+                                <button class="action-btn btn-ba" type="button" data-youtube="hkir9oZs0M0">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.6" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.347a1.125 1.125 0 0 1 0 1.972l-11.54 6.347a1.125 1.125 0 0 1-1.667-.986V5.653Z"/></svg><span>Bande-annonce</span>
+                </button>
+                            </div>
+        </div>
+    </div>
+</section>
+<!-- Image utilisée par la watchlist / les favoris (format paysage, comme sur le profil) -->
+<img id="imgOeuvre" src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/contenu/thumb/jujutsu-kaisen.webp" alt="" hidden>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"TVSeries","name":"Jujutsu Kaisen","url":"https://anime-sama.to/catalogue/jujutsu-kaisen/","image":"https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/contenu/jujutsu-kaisen.jpg","alternateName":["Jujutsu Kaisen: Shimetsu Kaiyuu - Zenpen","Sorcery Fight","JJK","JUJUTSU KAISEN Season 3: The Culling Game Part 1"],"description":"Plus de 10 000 morts et disparus sont recensés chaque année au Japon. Les sentiments négatifs que relâchent les êtres humains sont en cause. Souffrance, regrets, humiliation : leur concentration dans un même endroit engendre des malédictions souvent mortelles... C'est ce que va découvrir Yuji Itadori…","genre":["Action","Aventure","School Life","Yokai","Surnaturel","Magie","Mystère","Shônen","Science","fiction","Fantastique","Drame"]}</script>
+
+<!-- ============ CORPS : colonne principale + colonne d'infos ============ -->
+<div class="oe-corps">
+
+    <aside class="oe-cote">
+        
+                <div class="oe-bloc">
+            <h3 class="oe-bloc-titre">Informations</h3>
+                        <p class="oe-sous-titre">Anime</p>            <dl class="oe-infos">
+                                <dt>Format</dt><dd>Série TV</dd>
+                                <dt>Statut</dt><dd>Terminé</dd>
+                                <dt>Diffusion</dt><dd>3 oct. 2020</dd>
+                                <dt>Saison</dt><dd>Automne 2020</dd>
+                                <dt>Épisodes</dt><dd>59</dd>
+                                <dt>Durée</dt><dd>24 min / ép.</dd>
+                                <dt>Studio</dt><dd>MAPPA</dd>
+                                <dt>Chaîne</dt><dd>MBS, TBS</dd>
+                                <dt>Sur le site</dt><dd>59 épisodes VOSTFR et VF · 1 film</dd>
+                            </dl>
+                                    <p class="oe-sous-titre">Manga d’origine</p>            <dl class="oe-infos">
+                                <dt>Format</dt><dd>Manga</dd>
+                                <dt>Auteur</dt><dd>Gege Akutami</dd>
+                                <dt>Statut</dt><dd>Terminé</dd>
+                                <dt>Début</dt><dd>2018</dd>
+                                <dt>Volumes</dt><dd>30</dd>
+                                <dt>Chapitres</dt><dd>272</dd>
+                                <dt>En VF sur le site</dt><dd>272 chapitres · dernier ajout le 03/05/2026</dd>
+                                <dt>En VA sur le site</dt><dd>271 chapitres · dernier ajout le 02/08/2025</dd>
+                            </dl>
+                    </div>
+        
+                <div class="oe-bloc">
+            <h3 class="oe-bloc-titre">Sur les autres sites</h3>
+            <ul class="oe-liens">
+                                <li><a href="https://anilist.co/anime/113415" target="_blank" rel="noopener nofollow">
+                    <img class="oe-lien-logo" src="/img/logos/anilist.png" alt="" width="28" height="28" loading="lazy">
+                    <span class="oe-lien-nom">AniList</span>
+                    <span class="oe-lien-quoi">Anime</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.6" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/></svg>                </a></li>
+                                <li><a href="https://myanimelist.net/anime/40748" target="_blank" rel="noopener nofollow">
+                    <img class="oe-lien-logo" src="/img/logos/mal.svg" alt="" width="28" height="28" loading="lazy">
+                    <span class="oe-lien-nom">MyAnimeList</span>
+                    <span class="oe-lien-quoi">Anime</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.6" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/></svg>                </a></li>
+                                <li><a href="https://www.themoviedb.org/tv/95479" target="_blank" rel="noopener nofollow">
+                    <img class="oe-lien-logo" src="/img/logos/tmdb.png" alt="" width="28" height="28" loading="lazy">
+                    <span class="oe-lien-nom">TMDB</span>
+                    <span class="oe-lien-quoi">Série</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.6" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/></svg>                </a></li>
+                                <li><a href="https://anilist.co/manga/101517" target="_blank" rel="noopener nofollow">
+                    <img class="oe-lien-logo" src="/img/logos/anilist.png" alt="" width="28" height="28" loading="lazy">
+                    <span class="oe-lien-nom">AniList</span>
+                    <span class="oe-lien-quoi">Manga</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.6" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/></svg>                </a></li>
+                                <li><a href="https://myanimelist.net/manga/113138" target="_blank" rel="noopener nofollow">
+                    <img class="oe-lien-logo" src="/img/logos/mal.svg" alt="" width="28" height="28" loading="lazy">
+                    <span class="oe-lien-nom">MyAnimeList</span>
+                    <span class="oe-lien-quoi">Manga</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.6" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/></svg>                </a></li>
+                                <li><a href="https://mangadex.org/title/c52b2ce3-7f95-469c-96b0-479524fb7a1a" target="_blank" rel="noopener nofollow">
+                    <img class="oe-lien-logo" src="/img/logos/mangadex.svg" alt="" width="28" height="28" loading="lazy">
+                    <span class="oe-lien-nom">MangaDex</span>
+                    <span class="oe-lien-quoi">Scans</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.6" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/></svg>                </a></li>
+                                <li><a href="https://korbo.fr/oeuvre/jujutsu-kaisen" target="_blank" rel="noopener nofollow">
+                    <img class="oe-lien-logo" src="/img/logos/korbo.svg" alt="" width="28" height="28" loading="lazy">
+                    <span class="oe-lien-nom">Korbo</span>
+                    <span class="oe-lien-quoi">Fiche</span>
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.6" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 0 0 3 8.25v10.5A2.25 2.25 0 0 0 5.25 21h10.5A2.25 2.25 0 0 0 18 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25"/></svg>                </a></li>
+                            </ul>
+        </div>
+            </aside>
+
+    <div class="oe-principal">
+
+        
+        
+        <h2 class="oe-h2">Synopsis</h2>
+        <div class="oe-synopsis">
+            <p id="synopsisText" class="oe-replie">Plus de 10 000 morts et disparus sont recensés chaque année au Japon. Les sentiments négatifs que relâchent les êtres humains sont en cause. Souffrance, regrets, humiliation : leur concentration dans un même endroit engendre des malédictions souvent mortelles...
+C'est ce que va découvrir Yuji Itadori, lycéen et membre du club d'occultisme. Il ne croit pas aux fantômes, mais il est doté d'une force physique hors norme qui représente un véritable atout pour les missions du groupe... jusqu'à ce que l'une d'elles prenne une mauvaise tournure. La relique qu'ils dénichent, le doigt découpé d'un démon millénaire, attire les monstres ! Sans réfléchir : le jeune homme avale la relique pour briser la malédiction ! Maintenant, il se trouve possédé par Ryômen Sukuna, le célèbre démon à deux visages. Cependant, contre toute attente, Yuji est toujours capable de garder le contrôle de son corps. Mais en dépit de cela, il est condamné à mort par l'organisation des exorcistes... Une décision qui ne pourra être repoussée qu'à une seule condition : trouver tous les doigts de Sukuna afin d'écarter la menace une bonne fois pour toutes !</p>
+            <button type="button" class="oe-voir-plus" data-cible="synopsisText" hidden>Voir plus</button>
+        </div>
+
+                <p class="oe-correspondance"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.6" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25"/></svg><span><strong>Correspondance :</strong> Saison 3 Épisode 12 -> Chapitre 181</span></p>
+        
+                <div class="oe-genres">
+                        <a class="genre-pill" href="/catalogue/?genre[]=Action">Action</a>
+                        <a class="genre-pill" href="/catalogue/?genre[]=Aventure">Aventure</a>
+                        <a class="genre-pill" href="/catalogue/?genre[]=School+Life">School Life</a>
+                        <a class="genre-pill" href="/catalogue/?genre[]=Yokai">Yokai</a>
+                        <a class="genre-pill" href="/catalogue/?genre[]=Surnaturel">Surnaturel</a>
+                        <a class="genre-pill" href="/catalogue/?genre[]=Magie">Magie</a>
+                        <a class="genre-pill" href="/catalogue/?genre[]=Myst%C3%A8re">Mystère</a>
+                        <a class="genre-pill" href="/catalogue/?genre[]=Sh%C3%B4nen">Shônen</a>
+                        <a class="genre-pill" href="/catalogue/?genre[]=Science">Science</a>
+                        <a class="genre-pill" href="/catalogue/?genre[]=fiction">fiction</a>
+                        <a class="genre-pill" href="/catalogue/?genre[]=Fantastique">Fantastique</a>
+                        <a class="genre-pill" href="/catalogue/?genre[]=Drame">Drame</a>
+                    </div>
+        
+        <!-- Les sections Anime / Manga de l'œuvre suivent (index.php de l'œuvre) -->
+
+				<!-- ANIME -->
+				<h2 class="text-white text-xl font-bold uppercase border-b-2 mt-5 border-slate-500">Anime</h2>
+				<div class="flex flex-wrap overflow-y-hidden justify-start bg-slate-900 bg-opacity-70 rounded mt-2 h-auto">
+					<script>
+					/*panneauAnime("nom", "url"); -> on en met autant qu'on veut à la ligne*/
+					panneauAnime("Saison 1", "saison1/vostfr");
+					panneauAnime("Film", "film/vostfr");
+					panneauAnime("Saison 2", "saison2/vostfr");
+					panneauAnime("Saison 3", "saison3/vostfr");
+					</script>
+				</div>
+
+				<!-- MANGA -->
+				<h2 class="text-white text-xl font-bold uppercase border-b-2 mt-5 border-slate-500">Manga</h2>
+				<div class="flex flex-wrap overflow-y-hidden justify-start bg-slate-900 bg-opacity-70 rounded mt-2 h-auto">
+					<script>
+					/*panneauScan("nom", "url"); -> on en met autant qu'on veut à la ligne*/
+					panneauScan("Scans", "scan/vf");
+					panneauScan("Modulo", "scan-modulo/vf");
+					</script>
+				</div>
+
+				
+<style>
+/* Saisons masquées (lignes panneauAnime mises en commentaire, ex. après la fin de Sibnet) */
+.oe-panneau.oe-indispo { border-color: rgba(100, 116, 139, 0.6); }
+.oe-panneau.oe-indispo img { filter: grayscale(1); opacity: 0.2; }
+.oe-panneau.oe-indispo .oe-panneau-nom { color: #cbd5e1; }
+.oe-panneau.oe-indispo:hover { border-color: #94a3b8; }
+.oe-indispo-badge { position: absolute; top: 0.45rem; left: 50%; transform: translateX(-50%); padding: 0.1rem 0.5rem; border-radius: 999px; background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(148, 163, 184, 0.45); color: #e2e8f0; font-size: 0.68rem; font-weight: 600; white-space: nowrap; }
+</style>
+<script>
+/* Quand l'équipe masque une saison en mettant sa ligne en commentaire (<!--panneauAnime(...)--> ou //panneauAnime(...)),
+   la section restait vide sans explication. On réaffiche ces saisons, grisées avec « Bientôt de retour » :
+   la page de la saison explique déjà que le lecteur est en cours de remplacement. */
+(function () {
+    if (typeof OE_BASE === 'undefined') return;
+    var re = /panneau(Anime|Scan)\s*\(\s*(["'])(.*?)\2\s*,\s*(["'])(.*?)\4/;
+    document.querySelectorAll('.oe-principal script').forEach(function (sc) {
+        var lignes = sc.textContent.split(/\r?\n/), elems = [], masquee = false, bloc = false;
+        var suivant = sc.nextElementSibling;
+        lignes.forEach(function (l) {
+            l = l.trim();
+            // Commentaire <!-- ... --> étalé sur plusieurs lignes : toutes ses lignes sont masquées
+            var cachee = bloc || /^(<!--|\/\/)/.test(l) || l.indexOf('-->') !== -1;
+            if (/^<!--/.test(l) && l.indexOf('-->') === -1) bloc = true;
+            if (l.indexOf('-->') !== -1) bloc = false;
+            var m = l.match(re);
+            if (!m || /^\/\*/.test(l)) return;
+            if (cachee) {
+                masquee = true;
+                var a = document.createElement('a');
+                a.href = /^(https?:)?\//.test(m[5]) ? m[5] : OE_BASE + m[5];
+                a.className = 'oe-panneau oe-indispo' + (m[1] === 'Scan' ? ' oe-panneau-scan' : '');
+                a.title = 'Indisponible pour le moment : le lecteur est en cours de remplacement';
+                var img = document.createElement('img'); img.src = OE_IMG; img.alt = ''; img.loading = 'lazy'; img.decoding = 'async';
+                var b = document.createElement('span'); b.className = 'oe-indispo-badge'; b.textContent = 'Bientôt de retour';
+                var n = document.createElement('span'); n.className = 'oe-panneau-nom' + (m[3].length > 30 ? ' oe-long' : ''); n.textContent = m[3];
+                a.appendChild(img); a.appendChild(b); a.appendChild(n);
+                elems.push(a);
+            } else if (suivant && suivant.classList.contains('oe-panneau')) {
+                elems.push(suivant);              // bouton déjà affiché : on garde l'ordre d'origine
+                suivant = suivant.nextElementSibling;
+            }
+        });
+        if (!masquee) return;
+        var parent = sc.parentNode;
+        elems.forEach(function (el) { parent.appendChild(el); });
+    });
+})();
+</script>
+
+    </div><!-- /.oe-principal -->
+
+        <!-- Sous les informations sur téléphone, sous le contenu sur ordinateur -->
+    <div class="oe-suite">
+
+                <h2 class="oe-h2">Personnages <span class="oe-h2-detail">et leurs doubleurs japonais</span></h2>
+        <div class="oe-rangee scrollBarStyled grabScroll">
+                        <div class="oe-perso">
+                <div class="oe-perso-img">
+                    <img src="https://s4.anilist.co/file/anilistcdn/character/medium/b126635-L0y3I92JSUkN.png" alt="" loading="lazy" decoding="async">                    <img class="oe-perso-voix" src="https://s4.anilist.co/file/anilistcdn/staff/medium/n119617-icFDk96OdV5k.png" alt="" loading="lazy" decoding="async">                </div>
+                <p class="oe-perso-nom">Megumi Fushiguro</p>
+                <p class="oe-perso-detail">Yuuma Uchida</p>
+            </div>
+                        <div class="oe-perso">
+                <div class="oe-perso-img">
+                    <img src="https://s4.anilist.co/file/anilistcdn/character/medium/b127212-FVm2tD0erQ5B.png" alt="" loading="lazy" decoding="async">                    <img class="oe-perso-voix" src="https://s4.anilist.co/file/anilistcdn/staff/medium/n119319-yIrrUOUaJuSm.png" alt="" loading="lazy" decoding="async">                </div>
+                <p class="oe-perso-nom">Yuuji Itadori</p>
+                <p class="oe-perso-detail">Junya Enoki</p>
+            </div>
+                        <div class="oe-perso">
+                <div class="oe-perso-img">
+                    <img src="https://s4.anilist.co/file/anilistcdn/character/medium/b127691-9zqh1xpIubn7.png" alt="" loading="lazy" decoding="async">                    <img class="oe-perso-voix" src="https://s4.anilist.co/file/anilistcdn/staff/medium/n95513-up9ZDuocHgRs.png" alt="" loading="lazy" decoding="async">                </div>
+                <p class="oe-perso-nom">Satoru Gojou</p>
+                <p class="oe-perso-detail">Yuuichi Nakamura</p>
+            </div>
+                        <div class="oe-perso">
+                <div class="oe-perso-img">
+                    <img src="https://s4.anilist.co/file/anilistcdn/character/medium/b133700-f6sOO3TcgLV6.png" alt="" loading="lazy" decoding="async">                    <img class="oe-perso-voix" src="https://s4.anilist.co/file/anilistcdn/staff/medium/n106787-ojpoY7XEGYgc.jpg" alt="" loading="lazy" decoding="async">                </div>
+                <p class="oe-perso-nom">Nobara Kugisaki</p>
+                <p class="oe-perso-detail">Asami Seto</p>
+            </div>
+                        <div class="oe-perso">
+                <div class="oe-perso-img">
+                    <img src="https://s4.anilist.co/file/anilistcdn/character/medium/b133699-FCnXaISgazAi.png" alt="" loading="lazy" decoding="async">                    <img class="oe-perso-voix" src="https://s4.anilist.co/file/anilistcdn/staff/medium/n95079-MdbWTLxPUvFf.jpg" alt="" loading="lazy" decoding="async">                </div>
+                <p class="oe-perso-nom">Suguru Getou</p>
+                <p class="oe-perso-detail">Takahiro Sakurai</p>
+            </div>
+                        <div class="oe-perso">
+                <div class="oe-perso-img">
+                    <img src="https://s4.anilist.co/file/anilistcdn/character/medium/b133701-rCQuDpHr3UZL.png" alt="" loading="lazy" decoding="async">                    <img class="oe-perso-voix" src="https://s4.anilist.co/file/anilistcdn/staff/medium/n95095-DvSjTQnqcgXP.png" alt="" loading="lazy" decoding="async">                </div>
+                <p class="oe-perso-nom">Sukuna</p>
+                <p class="oe-perso-detail">Junichi Suwabe</p>
+            </div>
+                        <div class="oe-perso">
+                <div class="oe-perso-img">
+                    <img src="https://s4.anilist.co/file/anilistcdn/character/medium/b133702-Y7JRG5vAvjIL.png" alt="" loading="lazy" decoding="async">                    <img class="oe-perso-voix" src="https://s4.anilist.co/file/anilistcdn/staff/medium/n105989-96etzH1dLNug.jpg" alt="" loading="lazy" decoding="async">                </div>
+                <p class="oe-perso-nom">Mahito</p>
+                <p class="oe-perso-detail">Nobunaga Shimazaki</p>
+            </div>
+                        <div class="oe-perso">
+                <div class="oe-perso-img">
+                    <img src="https://s4.anilist.co/file/anilistcdn/character/medium/b133704-8wLTGjc234q2.png" alt="" loading="lazy" decoding="async">                    <img class="oe-perso-voix" src="https://s4.anilist.co/file/anilistcdn/staff/medium/n95591-WQGdD3ubbeoq.jpg" alt="" loading="lazy" decoding="async">                </div>
+                <p class="oe-perso-nom">Kento Nanami</p>
+                <p class="oe-perso-detail">Kenjirou Tsuda</p>
+            </div>
+                        <div class="oe-perso">
+                <div class="oe-perso-img">
+                    <img src="https://s4.anilist.co/file/anilistcdn/character/medium/b134167-5TCytk45YByD.png" alt="" loading="lazy" decoding="async">                    <img class="oe-perso-voix" src="https://s4.anilist.co/file/anilistcdn/staff/medium/n105071-Hcj0X2gcliPq.png" alt="" loading="lazy" decoding="async">                </div>
+                <p class="oe-perso-nom">Maki Zenin</p>
+                <p class="oe-perso-detail">Mikako Komatsu</p>
+            </div>
+                        <div class="oe-perso">
+                <div class="oe-perso-img">
+                    <img src="https://s4.anilist.co/file/anilistcdn/character/medium/b134168-FdWz5w2LqpeF.jpg" alt="" loading="lazy" decoding="async">                    <img class="oe-perso-voix" src="https://s4.anilist.co/file/anilistcdn/staff/medium/n95158-OLhgs8zv5xsp.jpg" alt="" loading="lazy" decoding="async">                </div>
+                <p class="oe-perso-nom">Mai Zenin</p>
+                <p class="oe-perso-detail">Marina Inoue</p>
+            </div>
+                    </div>
+        
+                <h2 class="oe-h2">Équipe</h2>
+        <div class="oe-rangee scrollBarStyled grabScroll">
+                        <div class="oe-perso oe-staff">
+                <div class="oe-perso-img">
+                                        <img src="https://s4.anilist.co/file/anilistcdn/staff/medium/n125415-B1o6NtIImcCK.png" alt="" loading="lazy" decoding="async">
+                                    </div>
+                <p class="oe-perso-nom">Gege Akutami</p>
+                <p class="oe-perso-detail">Auteur original</p>
+            </div>
+                        <div class="oe-perso oe-staff">
+                <div class="oe-perso-img">
+                                        <img src="https://s4.anilist.co/file/anilistcdn/staff/medium/n123074-6tFkJXFgMNv9.png" alt="" loading="lazy" decoding="async">
+                                    </div>
+                <p class="oe-perso-nom">Seong-Hu Park</p>
+                <p class="oe-perso-detail">Réalisation</p>
+            </div>
+                        <div class="oe-perso oe-staff">
+                <div class="oe-perso-img">
+                                        <img src="https://s4.anilist.co/file/anilistcdn/staff/medium/n142936-wmrPkmCaZGJV.png" alt="" loading="lazy" decoding="async">
+                                    </div>
+                <p class="oe-perso-nom">Yui Miura</p>
+                <p class="oe-perso-detail">Réalisation adjointe</p>
+            </div>
+                        <div class="oe-perso oe-staff">
+                <div class="oe-perso-img">
+                                        <img src="https://s4.anilist.co/file/anilistcdn/staff/medium/n99012-IOasMPctDS6F.png" alt="" loading="lazy" decoding="async">
+                                    </div>
+                <p class="oe-perso-nom">Hiroshi Seko</p>
+                <p class="oe-perso-detail">Scénario</p>
+            </div>
+                        <div class="oe-perso oe-staff">
+                <div class="oe-perso-img">
+                                        <img src="https://s4.anilist.co/file/anilistcdn/staff/medium/n101185-CJLT9YKxSDZC.png" alt="" loading="lazy" decoding="async">
+                                    </div>
+                <p class="oe-perso-nom">Tadashi Hiramatsu</p>
+                <p class="oe-perso-detail">Character design</p>
+            </div>
+                        <div class="oe-perso oe-staff">
+                <div class="oe-perso-img">
+                                        <span class="oe-initiale">J</span>
+                                    </div>
+                <p class="oe-perso-nom">Jeong-Ryeon Kim</p>
+                <p class="oe-perso-detail">Direction artistique</p>
+            </div>
+                        <div class="oe-perso oe-staff">
+                <div class="oe-perso-img">
+                                        <span class="oe-initiale">C</span>
+                                    </div>
+                <p class="oe-perso-nom">Chikako Kamata</p>
+                <p class="oe-perso-detail">Color Design</p>
+            </div>
+                        <div class="oe-perso oe-staff">
+                <div class="oe-perso-img">
+                                        <img src="https://s4.anilist.co/file/anilistcdn/staff/medium/n187695-66OoI6HPffxX.jpg" alt="" loading="lazy" decoding="async">
+                                    </div>
+                <p class="oe-perso-nom">Teppei Itou</p>
+                <p class="oe-perso-detail">Direction photo</p>
+            </div>
+                    </div>
+        
+    </div><!-- /.oe-suite -->
+    </div><!-- /.oe-corps -->
+
+
+<h2 class="oe-h2 oe-h2-similaires">Œuvres similaires</h2>
+<div id="containerSimilaires" class="scrollBarStyled grabScroll flex flex-nowrap py-4 overflow-y-hidden mb-6">
+            <script>(function(){if(window.asInfoCourte)return;var M=/(^|\s)(Épisodes?|Episodes?|Chapitres?)\s+/gi;function trop(s){return s.scrollWidth>s.clientWidth+1;}function f(s){var l=s.dataset.long||(s.dataset.long=s.textContent);if(s.textContent!==l)s.textContent=l;if(!trop(s)||!M.test(l))return;M.lastIndex=0;s.title=l;s.textContent=l.replace(M,function(a,e,m){return e+(/^c/i.test(m)?"Ch. ":"Ép. ");});if(trop(s))s.textContent=l.replace(M,"$1");}function tout(n){document.querySelectorAll(".as-carte-info>span:not(.as-carte-temps)"+(n?":not([data-long])":"")).forEach(f);}window.asInfoCourte=tout;var t;function go(){tout();addEventListener("resize",function(){clearTimeout(t);t=setTimeout(tout,150);});addEventListener("load",function(){tout();});new MutationObserver(function(){clearTimeout(t);t=setTimeout(function(){tout(1);},100);}).observe(document.body,{childList:true,subtree:true});}if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",go);else go();})();</script><div class="as-carte as-carte-oeuvre" data-url="/catalogue/black-torch/" data-cat="oeuvre" data-nom="Black Torch  " data-img="https://raw.githubusercontent.com/Anime-Sama/IMG/img/contenu/black-torch.jpg"><a class="as-carte-lien" href="/catalogue/black-torch" draggable="false"><div class="as-carte-image"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/contenu/thumb/black-torch.webp" alt="" loading="lazy" decoding="async" draggable="false"></div><div class="as-carte-badges"><span class="as-badge as-badge-anime">Anime</span><span class="as-badge as-badge-scan">Scans</span><span class="as-drapeau"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/autres/flag_jp.png" alt="VOSTFR" title="VOSTFR" loading="lazy"></span><span class="as-drapeau"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/autres/flag_fr.png" alt="VF" title="VF" loading="lazy"></span><span class="as-drapeau"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/autres/flag_en.png" alt="VASTFR" title="VASTFR" loading="lazy"></span></div><div class="as-carte-texte"><h3 class="as-carte-titre" title="Black Torch  ">Black Torch  </h3></div></a><button class="pf-carte-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Actions" title="Actions"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M3 10a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0zM8.5 10a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0zM15.5 8.5a1.5 1.5 0 100 3 1.5 1.5 0 000-3z" /></svg></button></div>            <div class="as-carte as-carte-oeuvre" data-url="/catalogue/d-gray-man/" data-cat="oeuvre" data-nom="D Gray Man" data-img="https://raw.githubusercontent.com/Anime-Sama/IMG/img/contenu/d-gray-man.jpg"><a class="as-carte-lien" href="/catalogue/d-gray-man" draggable="false"><div class="as-carte-image"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/contenu/thumb/d-gray-man.webp" alt="" loading="lazy" decoding="async" draggable="false"></div><div class="as-carte-badges"><span class="as-badge as-badge-anime">Anime</span><span class="as-badge as-badge-scan">Scans</span><span class="as-drapeau"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/autres/flag_jp.png" alt="VOSTFR" title="VOSTFR" loading="lazy"></span><span class="as-drapeau"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/autres/flag_fr.png" alt="VF" title="VF" loading="lazy"></span></div><div class="as-carte-texte"><h3 class="as-carte-titre" title="D Gray Man">D Gray Man</h3></div></a><button class="pf-carte-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Actions" title="Actions"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M3 10a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0zM8.5 10a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0zM15.5 8.5a1.5 1.5 0 100 3 1.5 1.5 0 000-3z" /></svg></button></div>            <div class="as-carte as-carte-oeuvre" data-url="/catalogue/kemono-jihen/" data-cat="oeuvre" data-nom="Kemono Jihen" data-img="https://raw.githubusercontent.com/Anime-Sama/IMG/img/contenu/kemono-jihen.jpg"><a class="as-carte-lien" href="/catalogue/kemono-jihen/" draggable="false"><div class="as-carte-image"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/contenu/thumb/kemono-jihen.webp" alt="" loading="lazy" decoding="async" draggable="false"></div><div class="as-carte-badges"><span class="as-badge as-badge-anime">Anime</span><span class="as-badge as-badge-scan">Scans</span><span class="as-drapeau"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/autres/flag_jp.png" alt="VOSTFR" title="VOSTFR" loading="lazy"></span></div><div class="as-carte-texte"><h3 class="as-carte-titre" title="Kemono Jihen">Kemono Jihen</h3></div></a><button class="pf-carte-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Actions" title="Actions"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M3 10a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0zM8.5 10a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0zM15.5 8.5a1.5 1.5 0 100 3 1.5 1.5 0 000-3z" /></svg></button></div>            <div class="as-carte as-carte-oeuvre" data-url="/catalogue/owari-no-seraph/" data-cat="oeuvre" data-nom="Owari no Seraph" data-img="https://raw.githubusercontent.com/Anime-Sama/IMG/img/contenu/owari-no-seraph0.jpg"><a class="as-carte-lien" href="/catalogue/owari-no-seraph/" draggable="false"><div class="as-carte-image"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/contenu/thumb/owari-no-seraph0.webp" alt="" loading="lazy" decoding="async" draggable="false"></div><div class="as-carte-badges"><span class="as-badge as-badge-anime">Anime</span><span class="as-badge as-badge-scan">Scans</span><span class="as-drapeau"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/autres/flag_jp.png" alt="VOSTFR" title="VOSTFR" loading="lazy"></span><span class="as-drapeau"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/autres/flag_fr.png" alt="VF" title="VF" loading="lazy"></span></div><div class="as-carte-texte"><h3 class="as-carte-titre" title="Owari no Seraph">Owari no Seraph</h3></div></a><button class="pf-carte-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Actions" title="Actions"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M3 10a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0zM8.5 10a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0zM15.5 8.5a1.5 1.5 0 100 3 1.5 1.5 0 000-3z" /></svg></button></div>            <div class="as-carte as-carte-oeuvre" data-url="/catalogue/to-your-eternity/" data-cat="oeuvre" data-nom="To Your Eternity" data-img="https://raw.githubusercontent.com/Anime-Sama/IMG/img/contenu/to-your-eternity.jpg"><a class="as-carte-lien" href="/catalogue/to-your-eternity/" draggable="false"><div class="as-carte-image"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/contenu/thumb/to-your-eternity.webp" alt="" loading="lazy" decoding="async" draggable="false"></div><div class="as-carte-badges"><span class="as-badge as-badge-anime">Anime</span><span class="as-badge as-badge-scan">Scans</span><span class="as-drapeau"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/autres/flag_jp.png" alt="VOSTFR" title="VOSTFR" loading="lazy"></span><span class="as-drapeau"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/autres/flag_fr.png" alt="VF" title="VF" loading="lazy"></span></div><div class="as-carte-texte"><h3 class="as-carte-titre" title="To Your Eternity">To Your Eternity</h3></div></a><button class="pf-carte-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Actions" title="Actions"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M3 10a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0zM8.5 10a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0zM15.5 8.5a1.5 1.5 0 100 3 1.5 1.5 0 000-3z" /></svg></button></div>            <div class="as-carte as-carte-oeuvre" data-url="/catalogue/twin-star-exorcists/" data-cat="oeuvre" data-nom="Twin Star Exorcists" data-img="https://raw.githubusercontent.com/Anime-Sama/IMG/img/contenu/twin-star-exorcists.jpg"><a class="as-carte-lien" href="/catalogue/twin-star-exorcists" draggable="false"><div class="as-carte-image"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/contenu/thumb/twin-star-exorcists.webp" alt="" loading="lazy" decoding="async" draggable="false"></div><div class="as-carte-badges"><span class="as-badge as-badge-anime">Anime</span><span class="as-badge as-badge-scan">Scans</span><span class="as-drapeau"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/autres/flag_jp.png" alt="VOSTFR" title="VOSTFR" loading="lazy"></span></div><div class="as-carte-texte"><h3 class="as-carte-titre" title="Twin Star Exorcists">Twin Star Exorcists</h3></div></a><button class="pf-carte-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Actions" title="Actions"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M3 10a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0zM8.5 10a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0zM15.5 8.5a1.5 1.5 0 100 3 1.5 1.5 0 000-3z" /></svg></button></div>            <div class="as-carte as-carte-oeuvre" data-url="/catalogue/vampire-knight/" data-cat="oeuvre" data-nom="Vampire Knight" data-img="https://raw.githubusercontent.com/Anime-Sama/IMG/img/contenu/vampire-knight.jpg"><a class="as-carte-lien" href="/catalogue/vampire-knight" draggable="false"><div class="as-carte-image"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/contenu/thumb/vampire-knight.webp" alt="" loading="lazy" decoding="async" draggable="false"></div><div class="as-carte-badges"><span class="as-badge as-badge-anime">Anime</span><span class="as-badge as-badge-scan">Scans</span><span class="as-drapeau"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/autres/flag_jp.png" alt="VOSTFR" title="VOSTFR" loading="lazy"></span><span class="as-drapeau"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/autres/flag_fr.png" alt="VF" title="VF" loading="lazy"></span></div><div class="as-carte-texte"><h3 class="as-carte-titre" title="Vampire Knight">Vampire Knight</h3></div></a><button class="pf-carte-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Actions" title="Actions"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M3 10a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0zM8.5 10a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0zM15.5 8.5a1.5 1.5 0 100 3 1.5 1.5 0 000-3z" /></svg></button></div>            <div class="as-carte as-carte-oeuvre" data-url="/catalogue/07-ghost/" data-cat="oeuvre" data-nom="07 Ghost" data-img="https://raw.githubusercontent.com/Anime-Sama/IMG/img/contenu/07-ghost.jpg"><a class="as-carte-lien" href="/catalogue/07-ghost" draggable="false"><div class="as-carte-image"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/contenu/thumb/07-ghost.webp" alt="" loading="lazy" decoding="async" draggable="false"></div><div class="as-carte-badges"><span class="as-badge as-badge-anime">Anime</span><span class="as-badge as-badge-scan">Scans</span><span class="as-drapeau"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/autres/flag_jp.png" alt="VOSTFR" title="VOSTFR" loading="lazy"></span></div><div class="as-carte-texte"><h3 class="as-carte-titre" title="07 Ghost">07 Ghost</h3></div></a><button class="pf-carte-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Actions" title="Actions"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M3 10a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0zM8.5 10a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0zM15.5 8.5a1.5 1.5 0 100 3 1.5 1.5 0 000-3z" /></svg></button></div>            <div class="as-carte as-carte-oeuvre" data-url="/catalogue/angel-beats/" data-cat="oeuvre" data-nom="Angel Beats" data-img="https://raw.githubusercontent.com/Anime-Sama/IMG/img/contenu/angel-beats.jpg"><a class="as-carte-lien" href="/catalogue/angel-beats/" draggable="false"><div class="as-carte-image"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/contenu/thumb/angel-beats.webp" alt="" loading="lazy" decoding="async" draggable="false"></div><div class="as-carte-badges"><span class="as-badge as-badge-anime">Anime</span><span class="as-badge as-badge-scan">Scans</span><span class="as-drapeau"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/autres/flag_jp.png" alt="VOSTFR" title="VOSTFR" loading="lazy"></span><span class="as-drapeau"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/autres/flag_fr.png" alt="VF" title="VF" loading="lazy"></span></div><div class="as-carte-texte"><h3 class="as-carte-titre" title="Angel Beats">Angel Beats</h3></div></a><button class="pf-carte-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Actions" title="Actions"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M3 10a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0zM8.5 10a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0zM15.5 8.5a1.5 1.5 0 100 3 1.5 1.5 0 000-3z" /></svg></button></div>            <div class="as-carte as-carte-oeuvre" data-url="/catalogue/assassination-classroom/" data-cat="oeuvre" data-nom="Assassination Classroom" data-img="https://raw.githubusercontent.com/Anime-Sama/IMG/img/contenu/assassination-classroom.jpg"><a class="as-carte-lien" href="/catalogue/assassination-classroom/" draggable="false"><div class="as-carte-image"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/contenu/thumb/assassination-classroom.webp" alt="" loading="lazy" decoding="async" draggable="false"></div><div class="as-carte-badges"><span class="as-badge as-badge-anime">Anime</span><span class="as-badge as-badge-scan">Scans</span><span class="as-drapeau"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/autres/flag_jp.png" alt="VOSTFR" title="VOSTFR" loading="lazy"></span><span class="as-drapeau"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/autres/flag_fr.png" alt="VF" title="VF" loading="lazy"></span></div><div class="as-carte-texte"><h3 class="as-carte-titre" title="Assassination Classroom">Assassination Classroom</h3></div></a><button class="pf-carte-btn" type="button" aria-haspopup="true" aria-expanded="false" aria-label="Actions" title="Actions"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path d="M3 10a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0zM8.5 10a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0zM15.5 8.5a1.5 1.5 0 100 3 1.5 1.5 0 000-3z" /></svg></button></div>    </div>
+
+<!-- Bande-annonce (chargée seulement au clic) -->
+<div class="oe-modale" id="oeModale" hidden>
+    <div class="oe-modale-fond" data-fermer></div>
+    <div class="oe-modale-boite" role="dialog" aria-modal="true" aria-label="Bande-annonce">
+        <button type="button" class="oe-modale-fermer" data-fermer aria-label="Fermer">&times;</button>
+        <div class="oe-modale-video"></div>
+    </div>
+</div>
+
+</div><!-- /.oe-page -->
+
+			</div>
+
+			<div id="blocBottom" class="flex flex-col items-center justify-center gap-4 mt-10">
+			<p class="text-sm text-white text-center font-medium opacity-50 pb-2">Cliquer sur une pub est le meilleur moyen de nous soutenir.</p>
+			
+			<div id="squBot" style="margin-top:5px;" class="ad-container">
+				<span class="ad-label">Publicité</span>
+				<div class="ad-content sm:inline-flex items-center justify-center pt-1">
+					<a href="https://korbo.fr/?utm_source=anime-sama&utm_medium=banniere&utm_campaign=liste-sq" target="_blank"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/autres/korbo_liste_carre.png" alt="Korbo - Square liste" loading="lazy" width="300" height="300" style="max-width:100%; height:auto; border-radius:6px;"></a>
+					<div data-pub-suivi="a-zzz"><iframe class="pub-btag" src="/pub/cadre-btag.html?h=a-zzz&amp;z=7809940&amp;t=300x250" width="300" height="250" title="Publicité" scrolling="no" loading="lazy" sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox" style="border:0;display:block;margin:0 auto;width:300px;height:250px;max-width:none"></iframe></div>
+					<!--<a href="https://www.eneba.com/fr/?af_id=Leynoor&currency=EUR&region=global" target="_blank"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/autres/eneba_square.jpg" alt="Eneba - Jeux moins chers" loading="lazy" width="300" height="300" style="max-width:100%; height:auto; border-radius:6px;"></a>-->
+					<div class="pub-ordi"><div data-onclicka-zone="6155200" data-taille="300x250"></div></div>
+					<div class="pub-ordi"><div data-adcash-zone="8653002" data-taille="300x250"></div></div>
+					<!-- Téléphone : nouvelle zone 300×250 -->
+					<div class="pub-tel"><div data-onclicka-zone="6155200" data-taille="300x250"></div></div>
+					<div class="pub-tel"><div data-adcash-zone="12424246" data-taille="300x250"></div></div>
+				</div>
+			</div>
+
+			<div id="bannBot" class="ad-container">
+				<span class="ad-label">Publicité</span>
+					<a href="https://korbo.fr/jeux/animedle?utm_source=anime-sama&utm_medium=banniere&utm_campaign=animedle-lb" target="_blank"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/autres/korbo_animedle_leaderboard.png" alt="Korbo - Leaderboard Animedle" width="728" height="90" loading="lazy" style="max-width:100%; height:auto; border-radius:6px;"></a>
+				<!--<span class="ad-label mt-2">Publicité</span>
+					<a href="https://www.eneba.com/fr/?af_id=Leynoor&currency=EUR&region=global" target="_blank"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/autres/eneba_leaderboard.jpg" alt="Eneba - Jeux moins chers" width="728" height="90" loading="lazy" style="max-width:100%; height:auto; border-radius:6px;"></a>-->
+				<span class="ad-label mt-2">Publicité</span>
+					<iframe class="pub-btag" src="/pub/cadre-btag.html?h=aqle3&amp;z=12228087&amp;t=728x90" width="728" height="90" title="Publicité" scrolling="no" loading="lazy" sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox" style="border:0;display:block;margin:0 auto;width:728px;height:90px;max-width:none"></iframe>
+				<span class="ad-label mt-2">Publicité</span>
+					<div class="ad-content flex items-center justify-center mt-2"><div data-adcash-zone="8653014"></div></div>
+					<!-- Ordinateur : leaderboard Onclicka 728×90 en plus (19/11/2026) ; replié si vide, ignoré si l'écran est trop étroit -->
+					<div class="ad-content flex items-center justify-center mt-2 pub-ordi"><div data-onclicka-zone="6155199" data-taille="728x90"></div></div>
+					<!-- Téléphone : la 728×90 ne rentre pas, à la place une 300×100 -->
+					<div class="ad-content flex items-center justify-center mt-2 pub-tel"><div data-adcash-zone="12424238" data-taille="300x100"></div></div>
+					<!-- Téléphone : 250×250 Adcash en plus (18/11/2026) -->
+					<div class="ad-content flex items-center justify-center mt-2 pub-tel"><div data-adcash-zone="12424242" data-taille="250x250"></div></div>
+			</div>
+		</div>
+
+	</div>
+	
+	<!-- Bannière collée en bas de l'écran, téléphone et tablette uniquement (cachée à partir de lg) -->
+	<div id="pubCollee" class="lg:hidden" hidden>
+		<span class="pc-label">Publicité</span>
+		<button type="button" class="pc-fermer" aria-label="Fermer la publicité">&times;</button>
+		<div class="pc-contenu">
+			<iframe class="pub-btag" src="/pub/cadre-btag.html?h=aqle3&amp;z=12228087&amp;t=728x90" width="728" height="90" title="Publicité" scrolling="no" loading="lazy" sandbox="allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox" style="border:0;display:block;margin:0 auto;width:728px;height:90px;max-width:none"></iframe>
+			<!-- <div class="pc-adcash" data-adcash-zone="12424250" data-taille="468x60" data-ajuster></div>-->
+			<!--<a class="pc-repli" href="https://www.eneba.com/fr/?af_id=Leynoor&currency=EUR&region=global" target="_blank" rel="sponsored noopener"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/autres/eneba_leaderboard.jpg" alt="Eneba - Jeux moins chers" width="728" height="90"></a>-->
+		</div>
+	</div>
+	<script>
+	/* Bannières « Download » dans une iframe isolée (12/11/2026) : posé dans la page, leur script cachait
+	   le lecteur vidéo. Une 728×90 plus large que la place dispo est réduite (transform), pas coupée. */
+	(function () {
+		function ajuster() {
+			var l = document.querySelectorAll('iframe.pub-btag');
+			for (var i = 0; i < l.length; i++) {
+				var f = l[i], w = +f.getAttribute('width'), h = +f.getAttribute('height');
+				var parent = f.parentNode, dispo = Math.min(parent.clientWidth || w, window.innerWidth - 16);
+				var e = dispo > 0 && dispo < w ? dispo / w : 1;
+				f.style.transform = e < 1 ? 'scale(' + e + ')' : '';
+				f.style.transformOrigin = '0 0';
+				f.style.margin = e < 1 ? '0' : '0 auto';
+				if (e < 1) {
+					var boite = f.parentNode.classList.contains('pub-btag-boite') ? f.parentNode : null;
+					if (!boite) { boite = document.createElement('div'); boite.className = 'pub-btag-boite'; f.parentNode.insertBefore(boite, f); boite.appendChild(f); }
+					boite.style.cssText = 'width:' + Math.floor(w * e) + 'px;height:' + Math.floor(h * e) + 'px;overflow:hidden;margin:0 auto';
+				}
+			}
+		}
+		ajuster();
+		window.addEventListener('resize', ajuster);
+	})();
+	</script>
+	<script>
+	(function () {
+		var b = document.getElementById('pubCollee');
+		if (!b || window.innerWidth >= 1024) return;
+		try { if (sessionStorage.getItem('pc-ferme')) return; } catch (e) {}
+		b.hidden = false;
+		document.body.classList.add('pc-on');
+		var ac = b.querySelector('.pc-adcash');
+		if (ac) ac.addEventListener('pub-remplie', function (e) {
+			if (e.detail) b.classList.add('pc-ac-ok');   // pub Adcash là : on retire Eneba
+		});
+		b.querySelector('.pc-fermer').addEventListener('click', function () {
+			b.remove();
+			document.body.classList.remove('pc-on');
+			try { sessionStorage.setItem('pc-ferme', '1'); } catch (e) {}
+		});
+	})();
+	</script>
+
+	<div id="sousBlocRight" style="margin-top: 600px; margin-left: 30px;" class="hidden lg:block">
+		<div id="bannRight" class="ad-container">
+			<span class="ad-label">Publicité</span>
+			<a href="https://korbo.fr/jeux/blind-test?utm_source=anime-sama&utm_medium=banniere&utm_campaign=blindtest-sky" target="_blank"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/autres/korbo_blindtest_skyscraper.png" alt="Korbo - Skyscraper Blindtest" loading="lazy" style="max-width:100%; height:auto; border-radius:6px;"></a>
+			<div class="ad-content"><div data-onclicka-zone="6155198" data-taille="160x600"></div></div>
+			<div class="ad-content"><div data-adcash-zone="8653006" data-taille="160x600"></div></div>
+			<!--<a href="https://www.eneba.com/fr/?af_id=Leynoor&currency=EUR&region=global" target="_blank"><img src="https://cdn.jsdelivr.net/gh/Anime-Sama/IMG@img/autres/eneba_skyscraper.jpg" alt="Eneba - Jeux moins chers" loading="lazy" style="max-width:100%; height:auto; border-radius:6px;"></a>-->
+		</div>
+	</div>
+
+	
+</div>
+
+	<script>window.__CF$cv$params={r:'a5fa8664f8943969',t:'MTc5NTU0NTQ0Nw==',u:'01a20ed93d777270a689f6132d5fccb2',ut:'nuwTvWcIkAcgWCtmlL4Limbq_0lR61GcI9q.SyNaSzw-1795545447-1.2.1.1-TVG_D7GbOumy6ECaskX3TX8HC6q3CaT1c04J0obD.670XlAMQsBlrYiy.LdjgomUwEbV3Dg3hrBbTl1h.4sZi99j4U89nArcIYr6C4c5BB0',i:60};(function(){if(!document.body)return;var l=window.location,o;try{o=new URL(l.origin).origin}catch(e){try{o=new URL(new URL(l.href).origin).origin}catch(e){o=''}}var u='/cdn-cgi/challenge-platform/scripts/precursor/main.js?ray=a5fa8664f8943969',s=document.createElement('script');s.src=o?new URL(u,o).href:u;document.head.appendChild(s);})();</script></body>
+
+	<footer>
+		<footer class="asn-footer" role="contentinfo" aria-label="Pied de page site">
+  <div class="container">
+    <!-- Colonne 1 : Qui sommes-nous -->
+    <div class="col-about">
+      <h4>Qui sommes-nous</h4>
+      <p>Anime-Sama est un site de catalogue et de référencement d'animation APAC. Navigation optimisée, publicités réduites et fiches organisées pour faciliter vos recherches.</p>
+      <p class="legal">Anime-Sama n'héberge pas les vidéos. Pour toute réclamation liée au droit d'auteur, consultez la page DMCA ou contactez la plateforme d'hébergement concernée.</p>
+    </div>
+
+    <!-- Colonne 2 : Liens utiles -->
+    <div class="col-links">
+      <h4>Liens utiles</h4>
+      <ul class="links" aria-label="Liens utiles">
+        <li><a href="/catalogue">Catalogue</a></li>
+        <li><a href="/planning">Planning des sorties</a></li>
+        <li><a href="/aide">Centre d'aide</a></li>
+        <li><a href="/aide/#dmca">DMCA & signalements</a></li>
+        <li><a href="/profil">Mon profil</a></li>
+      </ul>
+    </div>
+
+    <!-- Colonne 3 : Soutien -->
+    <div class="col-support">
+      <h4>Soutenir les causes</h4>
+
+      <ul class="links" aria-label="Soutien les causes">
+        <li>
+          <a href="https://www.paypal.com/donate/?hosted_button_id=3FBNLMGT3JAJ2" target="_blank" rel="noopener">
+            <img class="flag" loading="lazy" src="https://flagcdn.com/w40/ps.png" alt="Drapeau Palestine">
+            <span>Palestine</span>
+          </a>
+        </li>
+
+        <li>
+          <a href="https://life-ong.org/en-us/urgence-soudan" target="_blank" rel="noopener">
+            <img class="flag" loading="lazy" src="https://flagcdn.com/w40/sd.png" alt="Drapeau Soudan">
+            <span>Soudan</span>
+          </a>
+        </li>
+
+        <li>
+          <a href="https://soutenir.msf.fr/faire-un-don/~mon-don?ns_ira_cr_arg=IyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMy8U8gFXy%2BvsdzSPrRo%2Fs2RMylPSbGlljZY1f0RudDLg%3D%3D&_cv=1" target="_blank" rel="noopener">
+            <img class="flag" loading="lazy" src="https://flagcdn.com/w40/cd.png" alt="Drapeau RDC">
+            <span>RDC</span>
+          </a>
+        </li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="container bottom">
+    <div class="brand-inline" style="align-items:center;">
+      <img class="logo-mobile" loading="lazy" src="/img/opti/logo.webp" alt="Logo Anime-Sama mini">
+      <div>
+        <span class="copyright" style="color:#8ea8bb; font-weight:700;">© 2026 Anime-Sama</span>
+        <div class="reserved" style="color:#6f8899;">Tous droits réservés</div>
+      </div>
+    </div>
+
+    <!-- Choix du fond d'écran (mémorisé dans le navigateur du visiteur) -->
+    <div class="fond-picker" role="group" aria-label="Fond d'écran du site">
+      <span>Fond d'écran</span>
+      <button type="button" data-fond="aurore" title="Aurore (par défaut)" aria-label="Aurore"></button>
+      <button type="button" data-fond="nuit" title="Bleu nuit" aria-label="Bleu nuit"></button>
+      <button type="button" data-fond="noir" title="Noir" aria-label="Noir"></button>
+      <button type="button" data-fond="anthracite" title="Anthracite" aria-label="Anthracite"></button>
+    </div>
+    <script>
+    (function () {
+      var boutons = document.querySelectorAll('.fond-picker button');
+      function marquerActif() {
+        var fond = document.documentElement.getAttribute('data-fond') || 'aurore';
+        boutons.forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.fond === fond ? 'true' : 'false'); });
+      }
+      boutons.forEach(function (b) {
+        b.addEventListener('click', function () {
+          var fond = b.dataset.fond;
+          try {
+            if (fond === 'aurore') localStorage.removeItem('fondSite');
+            else localStorage.setItem('fondSite', fond);
+          } catch (e) {}
+          if (fond === 'aurore') document.documentElement.removeAttribute('data-fond');
+          else document.documentElement.setAttribute('data-fond', fond);
+          marquerActif();
+        });
+      });
+      marquerActif();
+    })();
+    </script>
+
+    <div>
+
+    <nav aria-label="Discord">
+        <a href="https://discord.gg/mKbYYbmxY8" aria-label="Discord" target="_blank" rel="noopener" title="Discord" class="social-link">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" class="bi bi-discord" viewBox="0 0 16 16">
+              <path d="M13.545 2.907a13.2 13.2 0 0 0-3.257-1.011.05.05 0 0 0-.052.025c-.141.25-.297.577-.406.833a12.2 12.2 0 0 0-3.658 0 8 8 0 0 0-.412-.833.05.05 0 0 0-.052-.025c-1.125.194-2.22.534-3.257 1.011a.04.04 0 0 0-.021.018C.356 6.024-.213 9.047.066 12.032q.003.022.021.037a13.3 13.3 0 0 0 3.995 2.02.05.05 0 0 0 .056-.019q.463-.63.818-1.329a.05.05 0 0 0-.01-.059l-.018-.011a9 9 0 0 1-1.248-.595.05.05 0 0 1-.02-.066l.015-.019q.127-.095.248-.195a.05.05 0 0 1 .051-.007c2.619 1.196 5.454 1.196 8.041 0a.05.05 0 0 1 .053.007q.121.1.248.195a.05.05 0 0 1-.004.085 8 8 0 0 1-1.249.594.05.05 0 0 0-.03.03.05.05 0 0 0 .003.041c.24.465.515.909.817 1.329a.05.05 0 0 0 .056.019 13.2 13.2 0 0 0 4.001-2.02.05.05 0 0 0 .021-.037c.334-3.451-.559-6.449-2.366-9.106a.03.03 0 0 0-.02-.019m-8.198 7.307c-.789 0-1.438-.724-1.438-1.612s.637-1.613 1.438-1.613c.807 0 1.45.73 1.438 1.613 0 .888-.637 1.612-1.438 1.612m5.316 0c-.788 0-1.438-.724-1.438-1.612s.637-1.613 1.438-1.613c.807 0 1.451.73 1.438 1.613 0 .888-.631 1.612-1.438 1.612"/>
+          </svg>
+          <span>Discord</span>
+        </a>
+      </nav>
+      
+      <nav aria-label="Appli">
+        <a href="/application/" class="social-link appli-pied" data-installer-appli="" title="Ajouter Anime-Sama sur l'écran d'accueil">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/></svg>
+          <span>Raccourci comme une appli</span>
+        </a>
+      </nav>
+
+      <!--
+      <nav aria-label="Réseau social X">
+        <a href="https://x.com/Anime_samaFR" aria-label="X" target="_blank" rel="noopener" title="X" class="social-link">
+          <svg viewBox="0 0 1200 1227" xmlns="http://www.w3.org/2000/svg" fill="currentColor" aria-hidden="true">
+            <path d="M714.163 519.284L1160.89 0H1055.03L667.137 450.887L357.328 0H0L468.492 681.821L0 1226.37H105.866L515.491 750.218L842.672 1226.37H1200L714.137 519.284H714.163ZM569.165 687.828L521.697 619.934L144.011 79.6944H306.615L611.412 515.685L658.88 583.579L1055.08 1150.3H892.476L569.165 687.854V687.828Z"/>
+          </svg>
+          <span>@Anime_samaFR</span>
+        </a>
+      </nav>
+      -->
+
+
+    </div>
+  </div>
+</footer>
+	</footer>
+
+</html>

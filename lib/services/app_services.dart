@@ -3,8 +3,9 @@ import '../settings_store.dart';
 import 'airing_notifications.dart';
 import 'airing_service.dart';
 import 'anilist_service.dart';
-import 'animekai_resolver.dart';
 import 'anikage_resolver.dart';
+import 'animesama_resolver.dart';
+import 'anipm_resolver.dart';
 import 'anisuge_resolver.dart';
 import 'debrid_service.dart';
 import 'download_service.dart';
@@ -18,27 +19,49 @@ class AppServices {
   AppServices({
     required this.anilist,
     required this.miruro,
-    AnimeKaiResolver? animekai,
     AnisugeResolver? anisuge,
     AnikageResolver? anikage,
+    AniPmResolver? anipm,
+    AnimeSamaResolver? animesama,
     required this.debrid,
     required this.oauth,
     required this.downloads,
     required this.airing,
     required this.airingNotifications,
     this.configService,
-  })  : animekai = animekai ?? AnimeKaiResolver(anilist: anilist),
-        anisuge = anisuge ?? AnisugeResolver(anilist: anilist),
-        anikage = anikage ?? AnikageResolver(anilist: anilist);
+  })  : anisuge = anisuge ?? AnisugeResolver(anilist: anilist),
+        anikage = anikage ?? AnikageResolver(anilist: anilist),
+        anipm = anipm ?? AniPmResolver(anilist: anilist),
+        animesama = animesama ??
+            AnimeSamaResolver(
+              anilist: anilist,
+              // Canonical mirror only (not the rotated list):
+              // anime-sama.tv/.si 301 to .to, and a POST that
+              // redirects risks losing its body — always use .to
+              // unless the config's first mirror changes.
+              baseUrl: configService
+                  ?.config
+                  .provider('animesama')
+                  ?.mirrors
+                  .firstOrNull,
+            );
 
   factory AppServices.create({ProviderConfigService? configService}) {
     final AniListService anilist = AniListService();
     return AppServices(
       anilist: anilist,
       miruro: MiruroResolver(anilist: anilist),
-      animekai: AnimeKaiResolver(anilist: anilist),
       anisuge: AnisugeResolver(anilist: anilist),
       anikage: AnikageResolver(anilist: anilist),
+      anipm: AniPmResolver(anilist: anilist),
+      animesama: AnimeSamaResolver(
+        anilist: anilist,
+        baseUrl: configService
+            ?.config
+            .provider('animesama')
+            ?.mirrors
+            .firstOrNull,
+      ),
       debrid: DebridService(),
       oauth: OAuthService(),
       downloads: DownloadService(),
@@ -51,12 +74,6 @@ class AppServices {
   final AniListService anilist;
   final MiruroResolver miruro;
 
-  /// AnimeKai (0.2.23): its own selectable resolver — animekai.ro
-  /// chain (search -> anime page -> episode list -> server list ->
-  /// megavid embed -> signed HLS). Replaces ReAnime (removed —
-  /// flixcloud token API 410s) and AniZone (removed).
-  final AnimeKaiResolver animekai;
-
   /// AniSuge (0.2.24): anisuge.tv, AnimeWave clone — same backend
   /// as AniKoto, shared chain in MiruroResolver.
   final AnisugeResolver anisuge;
@@ -64,6 +81,22 @@ class AppServices {
   /// AniKage (0.2.24): anikage.cc SvelteKit JSON API (browse ->
   /// episodes -> servers -> sources -> megaplay embed).
   final AnikageResolver anikage;
+
+  /// AniPM (0.2.25): anipm.pk — search -> playback-bootstrap ->
+  /// settlar session -> settlar EMBED URL. The returned stream is
+  /// a WebView embed (see [ResolvedStream.playback]), NOT an mpv
+  /// stream: it plays in a fullscreen WebView with the site's own
+  /// controls. AnimeKai was REMOVED in 0.2.25 (its megavid streams
+  /// never played on the phone, even after the 0.2.24 header fix).
+  final AniPmResolver anipm;
+
+  /// Anime-Sama (0.2.25): anime-sama.to — French site, search ->
+  /// series page -> saison page -> /api/lien.php -> Vidmoly embed
+  /// -> signed HLS. Sub = VOSTFR (Japanese audio + French
+  /// hardsubs), Dub = VF (French dub); no English audio or
+  /// subtitles on this source. Base URL from the remote provider
+  /// config (`animesama` mirrors) with a bundled fallback.
+  final AnimeSamaResolver animesama;
 
   final DebridService debrid;
   final OAuthService oauth;
@@ -92,17 +125,21 @@ class AppServices {
   /// Resolve a playable stream for an episode.
   /// [debrid] is null (source resolvers) or 'torbox' / 'realdebrid'.
   /// [server] is the chosen source ('Miruro' | 'AniKoto' |
-  /// 'AnimeKai' | 'AniSuge' | 'AniKage') — 0.2.11 actually routes
+  /// 'AniSuge' | 'AniKage' | 'AniPM' | 'Anime-Sama') — 0.2.11 actually routes
   /// to it now:
-  /// Miruro = justanime chain, AniKoto = anikoto.cz chain, AnimeKai
-  /// = the animekai.ro chain (0.2.23), AniSuge = the anisuge.tv
-  /// chain (0.2.24), AniKage = the anikage.cc chain (0.2.24).
+  /// Miruro = justanime chain, AniKoto = anikoto.cz chain,
+  /// AniSuge = the anisuge.tv chain (0.2.24), AniKage = the
+  /// anikage.cc chain (0.2.24), AniPM = the anipm.pk chain
+  /// (0.2.25 — returns a WebView embed, not an mpv stream),
+  /// Anime-Sama = the anime-sama.to chain (0.2.25 — French site,
+  /// VOSTFR/VF via Vidmoly HLS; no English subs).
   /// Previously every non-debrid resolve silently went to Miruro
   /// and `preferredServer` was display-only. When the chosen
   /// server fails and the user's fallback setting is on, the other
   /// Miruro-family server is tried once. Returns null when nothing
-  /// resolved — [miruro.lastError] / [animekai.lastError] /
-  /// [anisuge.lastError] / [anikage.lastError] / the debrid path
+  /// resolved — [miruro.lastError] / [anisuge.lastError] /
+  /// [anikage.lastError] / [anipm.lastError] /
+  /// [animesama.lastError] / the debrid path
   /// carries the reason.
   Future<ResolvedStream?> resolveEpisode({
     required Anime anime,
@@ -135,8 +172,15 @@ class AppServices {
       );
     }
     final String chosen = server ?? store.preferredServer;
-    if (chosen == 'AnimeKai') {
-      return animekai.resolve(
+    if (chosen == 'Anime-Sama') {
+      return animesama.resolve(
+        anime: anime,
+        episodeNumber: episode,
+        subDub: subDub,
+      );
+    }
+    if (chosen == 'AniPM') {
+      return anipm.resolve(
         anime: anime,
         episodeNumber: episode,
         subDub: subDub,

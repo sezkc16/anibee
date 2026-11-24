@@ -10,6 +10,16 @@ import 'package:pointycastle/export.dart';
 import '../models.dart';
 import 'anilist_service.dart';
 
+/// How a resolved stream plays.
+/// - [mpv]: a real media URL for the mpv player (all sources
+///   except AniPM).
+/// - [webEmbed]: an embed page URL — the site's own player inside
+///   a fullscreen WebView (AniPM, 0.2.25: the settlar embed has no
+///   plain stream URL, so mpv can never play it). A webEmbed
+///   stream carries NO mpv subtitles, variants or Cast support —
+///   the embed plays with the site's own controls.
+enum StreamPlayback { mpv, webEmbed }
+
 /// A resolved playable stream: one best URL (or quality variants),
 /// playback headers, and subtitle tracks.
 class ResolvedStream {
@@ -20,6 +30,7 @@ class ResolvedStream {
     this.headers = const <String, String>{},
     this.variants = const <StreamVariant>[],
     this.subtitles = const <SubtitleInfo>[],
+    this.playback = StreamPlayback.mpv,
   });
 
   /// Best (highest-quality) playable URL.
@@ -28,9 +39,14 @@ class ResolvedStream {
   /// Human label, e.g. "Miruro MegaPlay 1080p" / "TorBox Cached 1080p".
   final String label;
 
-  /// 'Miruro' | 'Anikoto' | 'AnimeKai' | 'AniSuge' | 'AniKage' |
-  /// 'TorBox' | 'Real-Debrid'.
+  /// 'Miruro' | 'Anikoto' | 'AniSuge' | 'AniKage' | 'AniPM' |
+  /// 'Anime-Sama' | 'TorBox' | 'Real-Debrid'.
   final String source;
+
+  /// How this stream plays — mpv (default) or a WebView embed
+  /// (AniPM only, 0.2.25). Callers MUST branch on this: a webEmbed
+  /// URL is an HTML page, never a media URL.
+  final StreamPlayback playback;
 
   /// Headers the player must send (Referer / Origin / UA).
   final Map<String, String> headers;
@@ -684,13 +700,13 @@ class MiruroResolver {
   }
 
   /// Resolve one megaplay embed URL to a playable stream. Public
-  /// so the AnimeKai resolver can reuse it — some AnimeKai titles
-  /// serve megaplay embeds instead of megavid (e.g. Demon Slayer
-  /// EP1 sub: `megaplay.buzz/stream/s-2/1279/sub`), and the
-  /// megaplay chain (getSources -> AES decrypt -> signed master)
-  /// lives here, in one place. [watchUrl] is the Referer for the
-  /// embed-page fetch (the AnimeKai anime page). The returned
-  /// stream carries Miruro's label/source — callers re-label it.
+  /// so the AniSuge / AniKage resolvers can reuse it — some of
+  /// their titles serve megaplay embeds (e.g. Demon Slayer EP1
+  /// sub: `megaplay.buzz/stream/s-2/1279/sub`), and the megaplay
+  /// chain (getSources -> AES decrypt -> signed master) lives
+  /// here, in one place. [watchUrl] is the Referer for the
+  /// embed-page fetch. The returned stream carries Miruro's
+  /// label/source — callers re-label it.
   Future<ResolvedStream?> resolveMegaplayEmbed({
     required String embedUrl,
     required String subDub,

@@ -27,7 +27,7 @@ import 'miruro_resolver.dart';
 ///   megaplay.buzz embed, plus `result.skip_data`)
 ///   -> megaplay embed -> getSources -> AES decrypt -> signed
 ///   master (the chain lives in MiruroResolver; reused here
-///   exactly like AnimeKai does).
+///   exactly like AniKage does).
 ///
 /// The site is an AnimeWave-family clone ("a variant for
 /// animewave" per the ZORO repo's plugins.json: baseUrl
@@ -42,7 +42,7 @@ import 'miruro_resolver.dart';
 ///
 /// Titles carry a "(TV)" qualifier on this site ("Jujutsu Kaisen
 /// (TV)") — the matcher strips parenthetical qualifiers before
-/// comparing, the same quirk AnimeKai hit in 0.2.23.
+/// comparing.
 class AnisugeResolver {
   AnisugeResolver({
     http.Client? client,

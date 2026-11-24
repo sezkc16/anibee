@@ -93,7 +93,6 @@ void main() {
             airing: AiringService(anilist: anilist),
             airingNotifications: null,
             onOpenAnime: (_) {},
-            onOpenSearch: () {},
             onWatchNow: (_) {},
           ),
         ),

@@ -240,7 +240,6 @@ class _AppShellState extends State<AppShell> {
                   airing: widget.services.airing,
                   airingNotifications: widget.services.airingNotifications,
                   onOpenAnime: _openAnime,
-                  onOpenSearch: () => setState(() => _tab = 1),
                   onWatchNow: (Anime anime) =>
                       _openAnime(anime, autoPlay: true),
                 ),
@@ -250,6 +249,7 @@ class _AppShellState extends State<AppShell> {
                 child: SearchScreen(
                   onOpenAnime: _openAnime,
                   anilist: widget.services.anilist,
+                  store: widget.store,
                 ),
               ),
               _TabFade(

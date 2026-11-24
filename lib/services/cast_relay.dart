@@ -48,31 +48,20 @@ import 'package:flutter/foundation.dart';
 /// variant and segment fetches).
 const String kCastRelayReferer = 'https://megaplay.buzz/';
 
-/// The Referer for the megavid CDN (AnimeKai, 0.2.23): the megavid
-/// embed player lives on megavid.buzz and fetches its media from
-/// s-*.megavid.se — the embed origin is the Referer a browser
-/// would send there. Not curl-proven (the media host drops the
-/// VM's connections entirely) — the relay sends it so a Referer
-/// gate, if one exists, is satisfied; an ungated host ignores it.
-const String kCastRelayMegavidReferer = 'https://megavid.buzz/';
-
 /// Host suffixes whose HLS must go through the relay — the hosts
 /// the Miruro/AniKoto chain serves from, plus the chain's own
 /// domains. Proven from the resolver code (`miruro_resolver.dart`:
 /// justanime core API → megaplay embed → nexabloom CDN) and the
 /// 0.2.20 curl evidence (master on fetch.nexabloom.top, segments
-/// on n953x.midnightvoyage.site). 0.2.23 adds `megavid.se` —
-/// AnimeKai's megavid embeds serve HLS from s-*.megavid.se and the
-/// default receiver cannot send the Referer the embed origin
-/// implies. A host matches when it equals a suffix or is a
-/// subdomain of one.
+/// on n953x.midnightvoyage.site). (0.2.25: the megavid hosts
+/// AnimeKai used are gone with AnimeKai — no remaining source
+/// serves from megavid.) A host matches when it equals a suffix
+/// or is a subdomain of one.
 const List<String> kCastRelayGatedHostSuffixes = <String>[
   'nexabloom.top',
   'midnightvoyage.site',
   'megaplay.buzz',
   'justanime.to',
-  'megavid.se',
-  'megavid.buzz',
 ];
 
 /// Whether [url]'s host is Referer-gated and must be relayed to
@@ -90,19 +79,10 @@ bool needsCastRelay(String url) {
   return false;
 }
 
-/// The Referer to send upstream for [url]. The megaplay chain
+/// The Referer to send upstream for [url]. The whole gated set
 /// shares the one proven megaplay referer — the CDN checks it on
-/// every host in the chain. Megavid hosts (AnimeKai, 0.2.23) get
-/// the megavid referer instead. Pure — unit-tested.
+/// every host in the chain. Pure — unit-tested.
 String castRelayRefererForUrl(String url) {
-  final Uri? uri = Uri.tryParse(url);
-  final String host = (uri?.host ?? '').toLowerCase();
-  if (host == 'megavid.se' ||
-      host.endsWith('.megavid.se') ||
-      host == 'megavid.buzz' ||
-      host.endsWith('.megavid.buzz')) {
-    return kCastRelayMegavidReferer;
-  }
   return kCastRelayReferer;
 }
 

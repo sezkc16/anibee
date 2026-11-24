@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../models.dart';
 import '../services/anilist_service.dart';
+import '../settings_store.dart';
 import '../theme.dart';
 import '../widgets/poster.dart';
 import '../widgets/premium_picker.dart';
@@ -20,10 +21,14 @@ class SearchScreen extends StatefulWidget {
     super.key,
     required this.onOpenAnime,
     required this.anilist,
+    required this.store,
   });
 
   final ValueChanged<Anime> onOpenAnime;
   final AniListService anilist;
+
+  /// Owns the recent-searches list (0.2.25).
+  final SettingsStore store;
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -155,6 +160,27 @@ class _SearchScreenState extends State<SearchScreen> {
     });
   }
 
+  /// 0.2.25: a SUBMITTED search (keyboard Search key) records
+  /// the term in recent searches. Typing never records anything —
+  /// the debounced live search is not a submission. Runs the
+  /// remote search immediately instead of waiting for the
+  /// debounce.
+  void _submitSearch(String value) {
+    final String term = value.trim();
+    if (term.length < 2) return;
+    unawaited(widget.store.addRecentSearch(term));
+    _debounce?.cancel();
+    setState(() => _searching = true);
+    unawaited(_runRemoteSearch());
+  }
+
+  /// 0.2.25: re-run a recent search — fill the field and search
+  /// it (same path as typing it again).
+  void _runRecentSearch(String term) {
+    _controller.text = term;
+    _onQueryChanged(term);
+  }
+
   void _onFilterChanged() {
     if (_controller.text.trim().length >= 2) {
       setState(() => _searching = true);
@@ -275,6 +301,8 @@ class _SearchScreenState extends State<SearchScreen> {
           child: TextField(
             controller: _controller,
             onChanged: _onQueryChanged,
+            onSubmitted: _submitSearch,
+            textInputAction: TextInputAction.search,
             style: TextStyle(color: primaryText),
             decoration: InputDecoration(
               hintText: 'Search anime...',
@@ -378,6 +406,91 @@ class _SearchScreenState extends State<SearchScreen> {
           ),
         ),
         const SizedBox(height: 16),
+        // 0.2.25: recent searches — only when the query is empty
+        // (the section is the search-home state). Tapping a term
+        // re-runs it; X removes one term; "Clear all" empties the
+        // list. Only SUBMITTED searches are recorded, never
+        // keystrokes.
+        if (_query.isEmpty && widget.store.recentSearches.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Row(
+                  children: <Widget>[
+                    Text(
+                      'Recent searches',
+                      style: TextStyle(
+                        color: primaryText,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const Spacer(),
+                    GestureDetector(
+                      onTap: () async {
+                        await widget.store.clearRecentSearches();
+                        if (mounted) setState(() {});
+                      },
+                      child: Text(
+                        'Clear all',
+                        style: TextStyle(
+                          color: accent,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                for (final String term in widget.store.recentSearches)
+                  InkWell(
+                    onTap: () => _runRecentSearch(term),
+                    borderRadius: BorderRadius.circular(10),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 7),
+                      child: Row(
+                        children: <Widget>[
+                          Icon(
+                            Icons.history_rounded,
+                            color: secondaryText,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              term,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: primaryText,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                          GestureDetector(
+                            onTap: () async {
+                              await widget.store.removeRecentSearch(term);
+                              if (mounted) setState(() {});
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.all(4),
+                              child: Icon(
+                                Icons.close_rounded,
+                                color: secondaryText,
+                                size: 18,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
         if (_query.isNotEmpty || _filtersActive)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -425,7 +538,15 @@ class _SearchScreenState extends State<SearchScreen> {
               return PosterCard(
                 anime: anime,
                 width: double.infinity,
-                onTap: () => widget.onOpenAnime(anime),
+                onTap: () {
+                  // 0.2.25: acting on a search result records the
+                  // search — the user found what they wanted.
+                  // Typing alone never records anything.
+                  if (_query.trim().length >= 2) {
+                    unawaited(widget.store.addRecentSearch(_query.trim()));
+                  }
+                  widget.onOpenAnime(anime);
+                },
               );
             },
           ),

@@ -3,10 +3,13 @@ import 'dart:convert';
 import 'package:anibee/models.dart';
 import 'package:anibee/screens/search_screen.dart';
 import 'package:anibee/services/anilist_service.dart';
+import 'package:anibee/settings_store.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// 0.2.12 item 9: "bohot sare anime movies dikh nhi rahe search se"
 /// — The Garden of Words, Noblesse, Black Clover S2. Verified causes:
@@ -20,6 +23,18 @@ import 'package:http/testing.dart';
 /// poster renders initials; a real URL would hang Image.network
 /// in the VM).
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  // 0.2.25: SearchScreen takes a SettingsStore (recent searches).
+  setUpAll(() {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('plugins.it_nomads.com/flutter_secure_storage'),
+      (MethodCall methodCall) async => null,
+    );
+  });
+
   Map<String, dynamic> media({
     required int id,
     required String english,
@@ -78,10 +93,15 @@ void main() {
     AniListService anilist,
     void Function(Anime) onOpen,
   ) async {
+    final SettingsStore store = await SettingsStore.load();
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: SearchScreen(onOpenAnime: onOpen, anilist: anilist),
+          body: SearchScreen(
+            onOpenAnime: onOpen,
+            anilist: anilist,
+            store: store,
+          ),
         ),
       ),
     );

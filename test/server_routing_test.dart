@@ -2,8 +2,9 @@ import 'package:anibee/models.dart';
 import 'package:anibee/services/airing_notifications.dart';
 import 'package:anibee/services/airing_service.dart';
 import 'package:anibee/services/anikage_resolver.dart';
+import 'package:anibee/services/animesama_resolver.dart';
 import 'package:anibee/services/anilist_service.dart';
-import 'package:anibee/services/animekai_resolver.dart';
+import 'package:anibee/services/anipm_resolver.dart';
 import 'package:anibee/services/anisuge_resolver.dart';
 import 'package:anibee/services/app_services.dart';
 import 'package:anibee/services/debrid_service.dart';
@@ -19,15 +20,19 @@ import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// 0.2.11: the server picker is HONEST — resolveEpisode actually
-/// routes to the chosen server. AnimeKai goes to the AnimeKai
-/// resolver, AniKoto to the anikoto.cz chain inside MiruroResolver,
-/// Miruro to the justanime chain. A MockClient that 404s everything
-/// proves which resolver was entered: the entered resolver sets its
-/// lastError, the other stays clean. No fake streams, ever.
+/// routes to the chosen server. AniKoto to the anikoto.cz chain
+/// inside MiruroResolver, Miruro to the justanime chain. A
+/// MockClient that 404s everything proves which resolver was
+/// entered: the entered resolver sets its lastError, the other
+/// stays clean. No fake streams, ever.
 /// 0.2.23: ReAnime + AniZone are removed — their routing tests go
 /// with them.
 /// 0.2.24: AniSuge + AniKage join — same routing proof (dead client
 /// proves which resolver was entered).
+/// 0.2.25: AnimeKai is removed — its routing test goes with it.
+/// AniPM joins: a dead client proves the resolve enters the AniPM
+/// resolver (lastError set, others clean) and the returned stream
+/// would be a WebView embed (verified by the resolver tests).
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -62,9 +67,10 @@ void main() {
     return AppServices(
       anilist: anilist,
       miruro: MiruroResolver(client: client, anilist: anilist),
-      animekai: AnimeKaiResolver(client: client, anilist: anilist),
       anisuge: AnisugeResolver(client: client, anilist: anilist),
       anikage: AnikageResolver(client: client, anilist: anilist),
+      anipm: AniPmResolver(client: client, anilist: anilist),
+      animesama: AnimeSamaResolver(client: client, anilist: anilist),
       debrid: DebridService(),
       oauth: OAuthService(),
       downloads: DownloadService(),
@@ -73,7 +79,7 @@ void main() {
     );
   }
 
-  test('server=AnimeKai routes to AnimeKai (miruro untouched)', () async {
+  test('server=AniPM routes to AniPM (others untouched)', () async {
     final AppServices svc = await services();
     final SettingsStore store = await SettingsStore.load();
     final stream = await svc.resolveEpisode(
@@ -81,14 +87,36 @@ void main() {
       episode: 1,
       subDub: 'Sub',
       store: store,
-      server: 'AnimeKai',
+      server: 'AniPM',
     );
     expect(stream, isNull);
-    expect(svc.animekai.lastError, isNotNull);
+    expect(svc.anipm.lastError, isNotNull);
+    expect(svc.miruro.lastError, isNull);
+    expect(svc.anisuge.lastError, isNull);
+    expect(svc.anikage.lastError, isNull);
+    expect(svc.animesama.lastError, isNull);
+  });
+
+  test('server=Anime-Sama routes to Anime-Sama (others untouched)',
+      () async {
+    final AppServices svc = await services();
+    final SettingsStore store = await SettingsStore.load();
+    final stream = await svc.resolveEpisode(
+      anime: jjk,
+      episode: 1,
+      subDub: 'Sub',
+      store: store,
+      server: 'Anime-Sama',
+    );
+    expect(stream, isNull);
+    expect(svc.animesama.lastError, isNotNull);
+    expect(svc.anipm.lastError, isNull);
+    expect(svc.anisuge.lastError, isNull);
+    expect(svc.anikage.lastError, isNull);
     expect(svc.miruro.lastError, isNull);
   });
 
-  test('server=AniKoto routes to the anikoto chain (animekai untouched)',
+  test('server=AniKoto routes to the anikoto chain (others untouched)',
       () async {
     final AppServices svc = await services();
     final SettingsStore store = await SettingsStore.load();
@@ -101,13 +129,13 @@ void main() {
     );
     expect(stream, isNull);
     expect(svc.miruro.lastError, isNotNull);
-    expect(svc.animekai.lastError, isNull);
+    expect(svc.anipm.lastError, isNull);
   });
 
   test('no server arg honors store.preferredServer', () async {
     final AppServices svc = await services();
     final SettingsStore store = await SettingsStore.load();
-    await store.setPreferredServer('AnimeKai');
+    await store.setPreferredServer('AniPM');
     final stream = await svc.resolveEpisode(
       anime: jjk,
       episode: 1,
@@ -115,7 +143,7 @@ void main() {
       store: store,
     );
     expect(stream, isNull);
-    expect(svc.animekai.lastError, isNotNull);
+    expect(svc.anipm.lastError, isNotNull);
     expect(svc.miruro.lastError, isNull);
     await store.setPreferredServer('Miruro');
   });
@@ -132,7 +160,7 @@ void main() {
     );
     expect(stream, isNull);
     expect(svc.anisuge.lastError, isNotNull);
-    expect(svc.animekai.lastError, isNull);
+    expect(svc.anipm.lastError, isNull);
     expect(svc.anikage.lastError, isNull);
     expect(svc.miruro.lastError, isNull);
   });
@@ -149,35 +177,48 @@ void main() {
     );
     expect(stream, isNull);
     expect(svc.anikage.lastError, isNotNull);
-    expect(svc.animekai.lastError, isNull);
+    expect(svc.anipm.lastError, isNull);
     expect(svc.anisuge.lastError, isNull);
     expect(svc.miruro.lastError, isNull);
   });
 
   test(
-      'default sources are Miruro, AniKoto, AnimeKai, AniSuge, AniKage — no ReAnime / AniZone',
+      'default sources are Miruro, AniKoto, AniSuge, AniKage, AniPM, Anime-Sama — no AnimeKai / ReAnime / AniZone',
       () {
     final List<String> names =
         defaultSources().map((ProviderSource s) => s.name).toList();
     expect(names, <String>[
       'Miruro',
       'AniKoto',
-      'AnimeKai',
       'AniSuge',
       'AniKage',
+      'AniPM',
+      'Anime-Sama',
     ]);
     expect(names, isNot(contains('AllAnime')));
     expect(names, isNot(contains('ReAnime')));
     expect(names, isNot(contains('AniZone')));
+    expect(names, isNot(contains('AnimeKai')));
   });
 
-  test('default sources include AnimeKai, enabled (0.2.23)', () {
+  test('default sources include Anime-Sama, enabled, French (0.2.25)', () {
     final List<ProviderSource> sources = defaultSources();
-    final ProviderSource animekai = sources.firstWhere(
-      (ProviderSource s) => s.name == 'AnimeKai',
+    final ProviderSource animesama = sources.firstWhere(
+      (ProviderSource s) => s.name == 'Anime-Sama',
     );
-    expect(animekai.enabled, isTrue);
-    expect(kServerLanguages['AnimeKai'], <String>['English']);
+    expect(animesama.enabled, isTrue);
+    expect(animesama.tagline, contains('French'));
+    expect(kServerLanguages['Anime-Sama'], <String>['French']);
+  });
+
+  test('default sources include AniPM, enabled (0.2.25)', () {
+    final List<ProviderSource> sources = defaultSources();
+    final ProviderSource anipm = sources.firstWhere(
+      (ProviderSource s) => s.name == 'AniPM',
+    );
+    expect(anipm.enabled, isTrue);
+    expect(kServerLanguages['AniPM'], <String>['English']);
+    expect(kServerLanguages.containsKey('AnimeKai'), isFalse);
   });
 
   test('default sources include AniSuge + AniKage, enabled (0.2.24)', () {

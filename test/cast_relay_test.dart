@@ -26,13 +26,14 @@ void main() {
       );
       expect(needsCastRelay('https://megaplay.buzz/embed/x'), isTrue);
       expect(needsCastRelay('https://core.justanime.to/api/watch'), isTrue);
-      // 0.2.23: AnimeKai's megavid embeds serve HLS from
-      // s-*.megavid.se — the receiver cannot send the Referer.
+      // 0.2.25: the megavid hosts AnimeKai used are gone with
+      // AnimeKai — no remaining source serves from megavid, so
+      // they are NOT gated anymore.
       expect(
         needsCastRelay('https://s-90.megavid.se/uwu/abc/master.txt'),
-        isTrue,
+        isFalse,
       );
-      expect(needsCastRelay('https://megavid.buzz/mal/52299/1/sub'), isTrue);
+      expect(needsCastRelay('https://megavid.buzz/mal/52299/1/sub'), isFalse);
       expect(
         needsCastRelay('https://sub.fetch.nexabloom.top/x.m3u8'),
         isTrue,
@@ -72,17 +73,9 @@ void main() {
         castRelayRefererForUrl('https://n953x.midnightvoyage.site/x.jpg'),
         'https://megaplay.buzz/',
       );
-    });
-
-    test('megavid hosts get the megavid referer (0.2.23)', () {
-      expect(
-        castRelayRefererForUrl('https://s-90.megavid.se/uwu/x/master.txt'),
-        'https://megavid.buzz/',
-      );
-      expect(
-        castRelayRefererForUrl('https://megavid.buzz/mal/52299/1/sub'),
-        'https://megavid.buzz/',
-      );
+      // 0.2.25: no per-host referer anymore — AnimeKai's megavid
+      // referer went with AnimeKai; every URL gets the one proven
+      // megaplay referer.
       expect(
         castRelayRefererForUrl('https://cdn.example.com/ep1.m3u8'),
         'https://megaplay.buzz/',

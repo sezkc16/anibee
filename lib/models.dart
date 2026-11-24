@@ -941,20 +941,25 @@ String _mockAirDate(int episodeNumber) {
   return '${months[d.month - 1]} ${d.day}, ${d.year}';
 }
 
-/// Default Sources order: Miruro, AniKoto, AnimeKai, AniSuge,
-/// AniKage. The user can reorder in Settings > Sources; this is
+/// Default Sources order: Miruro, AniKoto, AniSuge, AniKage,
+/// AniPM, Anime-Sama. The user can reorder in Settings > Sources; this is
 /// only the default. (No ranking by episode counts — the 01:41
 /// "1 2 3" meant the episode NUMBER grid, not a sources ranking.)
 /// 0.2.23: ReAnime (flixcloud token API 410s — dead) and AniZone
-/// are removed; AnimeKai (animekai.ro, the revival clone — the
-/// original shut down May 10, 2026) takes the 3rd slot.
-/// 0.2.24: AniSuge (anisuge.tv, AnimeWave clone — same backend as
-/// AniKoto) and AniKage (anikage.cc, SvelteKit JSON API) join as
-/// 4th and 5th. The list is 5 sources, not 6: AniPM was researched
-/// twice (0.2.23 + 0.2.24 re-probe) but NOT added — its streams
-/// live inside a Cloudflare-gated settlar embed (the session API
-/// returns only an embedUrl, no stream URL), so no resolver could
-/// be verified against a real stream.
+/// are removed. 0.2.24: AniSuge (anisuge.tv, AnimeWave clone —
+/// same backend as AniKoto) and AniKage (anikage.cc, SvelteKit
+/// JSON API) join as 3rd and 4th.
+/// 0.2.25: AnimeKai (animekai.ro) is REMOVED — its megavid
+/// streams never played on the phone, even after the 0.2.24
+/// browser-equivalent header fix (user order, 2026-11-25).
+/// AniPM (anipm.pk) joins LAST as a WebView-embed source — its
+/// streams live inside a Cloudflare-gated settlar embed (the
+/// session API returns only an embedUrl, no stream URL), so it
+/// plays in a fullscreen WebView with the site's own controls,
+/// never through mpv. Anime-Sama (anime-sama.to) joins after
+/// AniPM — French site, VOSTFR (Japanese audio + French
+/// hardsubs) / VF (French dub) via Vidmoly HLS; no English
+/// audio or subtitles on this source.
 List<ProviderSource> defaultSources() {
   return const <ProviderSource>[
     ProviderSource(
@@ -968,8 +973,13 @@ List<ProviderSource> defaultSources() {
       tagline: '1080p • Sub • Stable',
       enabled: true,
     ),
-    ProviderSource(name: 'AnimeKai', tagline: '1080p • Sub/Dub', enabled: true),
     ProviderSource(name: 'AniSuge', tagline: '1080p • Sub/Dub', enabled: true),
     ProviderSource(name: 'AniKage', tagline: '1080p • Sub/Dub', enabled: true),
+    ProviderSource(name: 'AniPM', tagline: 'WebView • Sub/Dub', enabled: true),
+    ProviderSource(
+      name: 'Anime-Sama',
+      tagline: 'French • VOSTFR/VF',
+      enabled: true,
+    ),
   ];
 }

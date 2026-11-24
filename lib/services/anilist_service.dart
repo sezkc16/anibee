@@ -16,7 +16,7 @@ import '../models.dart';
 typedef AnilistListEntry = ({Anime anime, String status, int progress});
 
 /// Title variants + year + format for one AniList id (0.2.12) —
-/// what the AnimeKai matcher needs (see [AniListService.mediaIdentity]).
+/// what the title matchers need (see [AniListService.mediaIdentity]).
 class AnilistIdentity {
   const AnilistIdentity({
     required this.titles,
@@ -673,7 +673,7 @@ class AniListService {
   }
 
   /// Title variants + year + format for one AniList id (0.2.12):
-  /// the AnimeKai matcher needs romaji/english/native together
+  /// the title matchers need romaji/english/native together
   /// (animeFromMedia keeps only the preferred title) plus the year
   /// and format to tell Naruto (2002) from Shippuuden (2007) and
   /// Boruto (2017). Null on any failure — the caller treats it as

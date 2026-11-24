@@ -412,6 +412,15 @@ class SettingsStore extends ChangeNotifier {
   Set<String> savedIds = <String>{};
   Map<String, int> progressEpisodes = <String, int>{};
 
+  /// Recent searches (0.2.25): the last submitted search terms,
+  /// most recent first, capped at [kMaxRecentSearches]. Only
+  /// SUBMITTED searches count — typing never records anything.
+  /// Shown on the Search screen when the query is empty; tapping
+  /// one re-runs it. Persisted across restarts.
+  List<String> recentSearches = <String>[];
+
+  static const int kMaxRecentSearches = 10;
+
   /// AniList sync (0.2.11): epoch millis of the last successful
   /// list pull. 0 = never synced.
   int lastAnilistSyncAt = 0;
@@ -553,6 +562,8 @@ class SettingsStore extends ChangeNotifier {
     savedIds = _prefs.getStringList('saved_ids')?.toSet() ?? <String>{};
     removedFromLists =
         _prefs.getStringList('removed_lists')?.toSet() ?? <String>{};
+    recentSearches =
+        _prefs.getStringList('recent_searches') ?? <String>[];
     final String? progressJson = _prefs.getString('progress_eps');
     if (progressJson != null) {
       final Map<String, dynamic> decoded =
@@ -605,27 +616,20 @@ class SettingsStore extends ChangeNotifier {
         // 0.2.23 migration: ReAnime (flixcloud token API 410s —
         // dead) and AniZone are removed — drop both from any
         // persisted list so the picker never offers a source that
-        // cannot resolve. Add AnimeKai (animekai.ro) when missing.
-        // The 0.2.11 filter that dropped 'AnimeKai' (the ORIGINAL
-        // shut down May 10, 2026) is gone: animekai.ro is the new
-        // revival source.
+        // cannot resolve.
+        // 0.2.25 migration: AnimeKai is removed too (its megavid
+        // streams never played on the phone) — drop it from any
+        // persisted list and reset the preferred server when it
+        // was AnimeKai.
         sources = sources
             .where(
               (ProviderSource s) =>
                   s.name != 'AllAnime' &&
                   s.name != 'ReAnime' &&
-                  s.name != 'AniZone',
+                  s.name != 'AniZone' &&
+                  s.name != 'AnimeKai',
             )
             .toList();
-        if (!sources.any((ProviderSource s) => s.name == 'AnimeKai')) {
-          sources.add(
-            const ProviderSource(
-              name: 'AnimeKai',
-              tagline: '1080p • Sub/Dub',
-              enabled: true,
-            ),
-          );
-        }
         // 0.2.24 migration: AniSuge (anisuge.tv) and AniKage
         // (anikage.cc) join as 4th and 5th sources.
         if (!sources.any((ProviderSource s) => s.name == 'AniSuge')) {
@@ -646,9 +650,32 @@ class SettingsStore extends ChangeNotifier {
             ),
           );
         }
+        // 0.2.25 migration: AniPM (anipm.pk) joins last — a
+        // WebView-embed source (settlar embed, no mpv stream).
+        if (!sources.any((ProviderSource s) => s.name == 'AniPM')) {
+          sources.add(
+            const ProviderSource(
+              name: 'AniPM',
+              tagline: 'WebView • Sub/Dub',
+              enabled: true,
+            ),
+          );
+        }
+        // 0.2.25 migration: Anime-Sama (anime-sama.to) joins
+        // after AniPM — French site, VOSTFR/VF via Vidmoly HLS.
+        if (!sources.any((ProviderSource s) => s.name == 'Anime-Sama')) {
+          sources.add(
+            const ProviderSource(
+              name: 'Anime-Sama',
+              tagline: 'French • VOSTFR/VF',
+              enabled: true,
+            ),
+          );
+        }
         if (preferredServer == 'AllAnime' ||
             preferredServer == 'ReAnime' ||
-            preferredServer == 'AniZone') {
+            preferredServer == 'AniZone' ||
+            preferredServer == 'AnimeKai') {
           preferredServer = 'Miruro';
         }
         if (!sources.any((ProviderSource s) => s.preferred)) {
@@ -882,6 +909,45 @@ class SettingsStore extends ChangeNotifier {
   Future<void> removeWatchEntry(String key) async {
     watchHistory.removeWhere((WatchEntry e) => e.key == key);
     await _saveWatchHistory();
+    notifyListeners();
+  }
+
+  // --------------------------------------------------- recent searches
+
+  /// Record a SUBMITTED search term (0.2.25). Trims, ignores
+  /// terms under 2 characters, dedupes case-insensitively (a
+  /// re-search moves the term to the top, keeping the newest
+  /// casing), caps at [kMaxRecentSearches]. Keystrokes and
+  /// debounced live searches never call this — only the submit
+  /// action and acting on a result do.
+  Future<void> addRecentSearch(String term) async {
+    final String t = term.trim();
+    if (t.length < 2) return;
+    recentSearches.removeWhere(
+      (String e) => e.toLowerCase() == t.toLowerCase(),
+    );
+    recentSearches.insert(0, t);
+    if (recentSearches.length > kMaxRecentSearches) {
+      recentSearches.removeRange(
+        kMaxRecentSearches,
+        recentSearches.length,
+      );
+    }
+    await _prefs.setStringList('recent_searches', recentSearches);
+    notifyListeners();
+  }
+
+  /// Remove one term from the recent-searches list.
+  Future<void> removeRecentSearch(String term) async {
+    recentSearches.remove(term);
+    await _prefs.setStringList('recent_searches', recentSearches);
+    notifyListeners();
+  }
+
+  /// Clear the whole recent-searches list.
+  Future<void> clearRecentSearches() async {
+    recentSearches = <String>[];
+    await _prefs.remove('recent_searches');
     notifyListeners();
   }
 

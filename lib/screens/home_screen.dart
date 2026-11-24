@@ -30,7 +30,6 @@ class HomeScreen extends StatefulWidget {
     this.airing,
     this.airingNotifications,
     required this.onOpenAnime,
-    required this.onOpenSearch,
     required this.onWatchNow,
   });
 
@@ -46,9 +45,6 @@ class HomeScreen extends StatefulWidget {
   final AiringNotifications? airingNotifications;
 
   final ValueChanged<Anime> onOpenAnime;
-
-  /// Header search icon jumps to the Search tab.
-  final VoidCallback onOpenSearch;
 
   /// Hero "Watch Now" opens the Detail screen straight into the player.
   final ValueChanged<Anime> onWatchNow;
@@ -346,7 +342,9 @@ class _HomeScreenState extends State<HomeScreen> {
     // while only the content below scrolls (Anilili home behaviour).
     return Column(
       children: <Widget>[
-        // Header: AniBee wordmark left, bell + search right.
+        // Header: AniBee wordmark left, bell right. (0.2.25: the
+        // search button is removed — Search lives in the bottom
+        // nav tab. The bell stays.)
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 56, 16, 12),
           child: Row(
@@ -390,15 +388,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     neutral: true,
                   );
                 },
-              ),
-              IconButton(
-                icon: ReiconIcon(
-                  Reicon.outline.search,
-                  size: 24,
-                  color: secondaryText,
-                ),
-                tooltip: 'Search',
-                onPressed: widget.onOpenSearch,
               ),
             ],
           ),

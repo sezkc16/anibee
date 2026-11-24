@@ -59,13 +59,16 @@ Future<({String server, String subDub, String? debrid})?> showServerSheet({
 }
 
 /// Mock M1.1 language availability per server (real data in M2).
-/// AnimeKai carries Sub + Dub (its server list has both groups).
 const Map<String, List<String>> kServerLanguages = <String, List<String>>{
   'Miruro': <String>['English'],
   'AniKoto': <String>['English', 'Japanese'],
-  'AnimeKai': <String>['English'],
   'AniSuge': <String>['English'],
   'AniKage': <String>['English'],
+  'AniPM': <String>['English'],
+  // Anime-Sama is a French site: VOSTFR (Japanese audio +
+  // French hardsubs) and VF (French dub). No English audio or
+  // subtitles on this source.
+  'Anime-Sama': <String>['French'],
 };
 
 const List<String> kSheetLanguages = <String>[
