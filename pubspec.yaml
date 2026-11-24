@@ -71,10 +71,18 @@ dependencies:
   intl: ^0.20.2
 
   # 0.2.19: Chromecast in the player (default receiver CC1AD845,
-  # no custom receiver). flutter_chrome_cast v2 — Google Cast SDK
-  # for iOS + Android, actively maintained. The player talks to it
-  # only through lib/services/cast_service.dart (mockable).
-  flutter_chrome_cast: ^2.0.0
+  # no custom receiver). flutter_chrome_cast v1.5.0 — the NEWEST
+  # v1.x, deliberately NOT v2: v2.0.0's GoogleCast SPM package
+  # requires iOS 16.0 minimum, but this app targets iOS 15.6
+  # (CI 45381897023 failed on exactly that: "package product
+  # 'GoogleCast' requires minimum platform version 16.0 ... target
+  # supports 15.0"). v1.5.0 needs only iOS 15.0 and its Dart API is
+  # identical to v2 for everything cast_service.dart uses. Do NOT
+  # bump to ^2.0.0 without also raising the iOS deployment target
+  # to 16.0 (drops iOS 15 users — needs the user's say-so). The
+  # player talks to it only through lib/services/cast_service.dart
+  # (mockable).
+  flutter_chrome_cast: ^1.5.0
 
 dev_dependencies:
   flutter_test:

@@ -37,7 +37,10 @@ import 'package:flutter_chrome_cast/flutter_chrome_cast.dart';
 /// The service is split in two: the [CastService] interface the
 /// player screen talks to (mockable in tests) and
 /// [GoogleCastService], the real implementation over
-/// flutter_chrome_cast v2 (Google Cast SDK, iOS + Android).
+/// flutter_chrome_cast v1.5.0 (Google Cast SDK, iOS + Android) —
+/// the newest v1.x; v2.0.0 needs iOS 16.0 minimum, this app targets
+/// 15.6 (see pubspec.yaml — do not bump to v2 without raising the
+/// deployment target first).
 /// The player screen never touches the plugin directly.
 
 /// One discovered Cast device (TV / Chromecast / Cast speaker).
@@ -207,7 +210,7 @@ abstract class CastService {
   Future<void> setRate(double rate);
 }
 
-/// Real [CastService] over flutter_chrome_cast v2 (Google Cast
+/// Real [CastService] over flutter_chrome_cast v1.5.0 (Google Cast
 /// SDK). Default receiver only.
 class GoogleCastService implements CastService {
   bool _initialized = false;
