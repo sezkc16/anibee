@@ -234,10 +234,15 @@ void main() {
       expect(stream.label, 'AnimeKai Ani-HD Sub');
       expect(stream.subtitles, isNotEmpty);
       expect(stream.subtitles.first.label, 'English');
+      // 0.2.24: browser-equivalent headers for the megavid master —
+      // the FULL embed page as Referer (not the bare root), plus
+      // Origin + Accept, matching the working megaplay header set.
       expect(
         stream.headers['Referer'],
-        'https://megavid.buzz/',
+        'https://megavid.buzz/mal/52299/1/sub',
       );
+      expect(stream.headers['Origin'], 'https://megavid.buzz/');
+      expect(stream.headers['Accept'], '*/*');
       // The first server tried is the sub Ani-HD token.
       expect(
         requestedServerTokens.first,
@@ -633,6 +638,12 @@ void main() {
       expect(stream!.url, contains('index-f1-v1-a1.m3u8'));
       expect(stream.source, 'AnimeKai');
       expect(stream.label, 'AnimeKai HD Sub');
+      // 0.2.24 guard: the working megaplay path keeps its full
+      // header set (Origin + Accept + megaplay Referer) — the
+      // megavid fix mirrors this set, it must not regress this one.
+      expect(stream.headers['Origin'], 'https://megaplay.buzz');
+      expect(stream.headers['Accept'], '*/*');
+      expect(stream.headers['Referer'], 'https://megaplay.buzz/');
       expect(stream.variants, hasLength(1));
       // English + Portuguese + Spanish; the 'thumbnails' track is
       // not a subtitle.

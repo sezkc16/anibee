@@ -191,9 +191,23 @@ class AnimeKaiResolver {
           url: stream.master,
           label: 'AnimeKai ${server.name} $subDub',
           source: 'AnimeKai',
+          // 0.2.24: the s-90 edge rejects the old bare-root Referer
+          // (phone-proven 0.2.23: search resolves, mpv fails fast
+          // on the signed master.txt). Send exactly what the
+          // site's own web player (JW Player in a browser) sends
+          // for the same fetch: the FULL embed page as Referer
+          // (not the bare megavid.buzz/ root), plus Origin and
+          // Accept — the same header set the working megaplay
+          // path already sends (MiruroResolver). The token is
+          // opaque/encrypted (no decodable expiry) and fresh per
+          // resolve, and mpv plays .txt HLS fine (local mpv 0.37
+          // test) — neither explains the failure, so the request
+          // itself must match the browser's.
           headers: <String, String>{
             'User-Agent': _ua,
-            'Referer': 'https://$_megavidHost/',
+            'Accept': '*/*',
+            'Origin': 'https://$_megavidHost/',
+            'Referer': embedUrl,
           },
           subtitles: stream.subtitles,
         );
