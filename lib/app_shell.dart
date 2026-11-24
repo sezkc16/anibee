@@ -60,9 +60,9 @@ class _AppShellState extends State<AppShell> {
     });
   }
 
-  /// Show "Naya version aaya hai" once per cold start when a newer
+  /// Show "A new version is available" once per cold start when a newer
   /// release exists and the user has not dismissed that version
-  /// with "Baad me". Download opens the release page in the
+  /// with "Later". Download opens the release page in the
   /// browser (iOS cannot install an IPA from inside the app).
   Future<void> _maybeShowUpdateDialog() async {
     if (!mounted) return;
@@ -77,21 +77,21 @@ class _AppShellState extends State<AppShell> {
         return AlertDialog(
           backgroundColor: const Color(0xFF17171F),
           title: Text(
-            'Naya version aaya hai — ${update.tag}',
+            'A new version is available — ${update.tag}',
             style: const TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.w800,
             ),
           ),
           content: const Text(
-            'Naya AniBee version download karo aur eSign se install karo.',
+            'Download the new AniBee version and install it with eSign.',
             style: TextStyle(color: Colors.white70),
           ),
           actions: <Widget>[
             TextButton(
               onPressed: () => Navigator.of(context).pop(false),
               child: const Text(
-                'Baad me',
+                'Later',
                 style: TextStyle(color: Colors.white70),
               ),
             ),

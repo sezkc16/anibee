@@ -340,7 +340,7 @@ class SettingsStore extends ChangeNotifier {
   List<ProviderSource> sources = defaultSources();
 
   /// Update check (0.2.17): the release tag the user dismissed
-  /// with "Baad me" — never prompt again for that version.
+  /// with "Later" — never prompt again for that version.
   String? skippedUpdateVersion;
 
   // --- Downloads ---
@@ -1087,7 +1087,7 @@ class SettingsStore extends ChangeNotifier {
   }
 
   /// Update check (0.2.17): remember that the user dismissed the
-  /// prompt for [version] ("Baad me") — no prompt again for it.
+  /// prompt for [version] ("Later") — no prompt again for it.
   Future<void> skipUpdateVersion(String version) async {
     skippedUpdateVersion = version;
     await _save('skipped_update_version', version);

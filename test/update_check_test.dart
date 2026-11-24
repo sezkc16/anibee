@@ -24,8 +24,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// 0.2.17 UPDATE CHECKER (user order 2026-11-24 02:46, "0.2.17 pe
 /// hi dalo"): on cold start, GET the latest public release and
 /// compare its tag with the installed version. Newer → dialog
-/// "Naya version aaya hai — vX.Y.Z" with Download (release page in
-/// the browser) and "Baad me" (records the skipped version).
+/// "A new version is available — vX.Y.Z" with Download (release page in
+/// the browser) and "Later" (records the skipped version).
 /// Never forced; any failure is silent; launch never blocks.
 ///
 /// Harness notes: the shell pump is copied from
@@ -241,9 +241,9 @@ void main() {
       tester,
       checkForUpdate: () async => fakeUpdate,
     );
-    expect(find.text('Naya version aaya hai — v9.9.9'), findsOneWidget);
+    expect(find.text('A new version is available — v9.9.9'), findsOneWidget);
     expect(find.text('Download'), findsOneWidget);
-    expect(find.text('Baad me'), findsOneWidget);
+    expect(find.text('Later'), findsOneWidget);
   });
 
   testWidgets('no dialog when the check finds nothing newer',
@@ -252,30 +252,30 @@ void main() {
       tester,
       checkForUpdate: () async => null,
     );
-    expect(find.textContaining('Naya version aaya hai'), findsNothing);
+    expect(find.textContaining('A new version is available'), findsNothing);
   });
 
-  testWidgets('no dialog for a version dismissed with Baad me',
+  testWidgets('no dialog for a version dismissed with Later',
       (WidgetTester tester) async {
     await pumpShell(
       tester,
       checkForUpdate: () async => fakeUpdate,
       skippedVersion: 'v9.9.9',
     );
-    expect(find.textContaining('Naya version aaya hai'), findsNothing);
+    expect(find.textContaining('A new version is available'), findsNothing);
   });
 
-  testWidgets('Baad me persists the skipped version',
+  testWidgets('Later persists the skipped version',
       (WidgetTester tester) async {
     final SettingsStore store = await pumpShell(
       tester,
       checkForUpdate: () async => fakeUpdate,
     );
-    expect(find.text('Naya version aaya hai — v9.9.9'), findsOneWidget);
-    await tester.tap(find.text('Baad me'));
+    expect(find.text('A new version is available — v9.9.9'), findsOneWidget);
+    await tester.tap(find.text('Later'));
     await tester.pump();
     await tester.pump();
-    expect(find.text('Naya version aaya hai — v9.9.9'), findsNothing);
+    expect(find.text('A new version is available — v9.9.9'), findsNothing);
     expect(store.skippedUpdateVersion, 'v9.9.9');
     final SettingsStore reloaded = await SettingsStore.load();
     expect(reloaded.skippedUpdateVersion, 'v9.9.9');

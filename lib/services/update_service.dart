@@ -22,7 +22,7 @@ class UpdateAvailable {
 /// No token lives in the app — the check only works while the repo
 /// is public. Any failure (offline, private repo, bad JSON,
 /// timeout) is SILENT: no dialog, no error, and launch never
-/// blocks. Never a force-update: the dialog always has a "Baad me"
+/// blocks. Never a force-update: the dialog always has a "Later"
 /// that records the skipped version.
 class UpdateService {
   static const String latestReleaseUrl =
