@@ -193,7 +193,8 @@ class FullPlayerScreen extends StatefulWidget {
   State<FullPlayerScreen> createState() => _FullPlayerScreenState();
 }
 
-class _FullPlayerScreenState extends State<FullPlayerScreen> {
+class _FullPlayerScreenState extends State<FullPlayerScreen>
+    with WidgetsBindingObserver {
   Player get _player => widget.trailer.player;
   SettingsStore get _store => widget.store;
 
@@ -206,6 +207,28 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
 
   /// True while a new episode's stream is resolving.
   bool _resolving = false;
+
+  /// 0.2.27: true while a reconnect (re-resolve after pause +
+  /// background, or a manual Retry) is in flight — the resolving
+  /// overlay reads "Reconnecting…" instead of "Finding sources…".
+  bool _reconnecting = false;
+
+  /// 0.2.27: guards the reconnect against running twice (the
+  /// lifecycle resume and the Retry button can both fire it).
+  bool _reconnectInFlight = false;
+
+  /// 0.2.27: set when the app is backgrounded (pause +
+  /// background is the phone-proven repro for the mid-playback
+  /// "Couldn't load episode": the signed URLs / mpv connection
+  /// die while the app is suspended, and the error must NOT greet
+  /// the user on return — the stream is re-resolved instead).
+  bool _wasBackgrounded = false;
+
+  /// 0.2.27: whether the player was playing when the app went
+  /// to the background — a reconnect restores the prior state
+  /// (stays paused if he paused; resumes playing if it was
+  /// playing), never silently starts audio he paused.
+  bool _wasPlayingBeforeBackground = false;
   final ValueNotifier<double> _videoScale = ValueNotifier<double>(1.0);
 
   /// Animated gesture HUD state (volume / brightness / seek).
@@ -534,6 +557,7 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _currentEpisode = widget.initialEpisode;
     _rate = _player.state.rate;
     _fallbackResolver = MiruroResolver();
@@ -582,6 +606,7 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _positionSub?.cancel();
     _durationSub?.cancel();
     _completedSub?.cancel();
@@ -1259,6 +1284,90 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
     );
     _englishFetchTried = false;
     unawaited(_maybeFetchEnglishSubtitles(stream));
+  }
+
+  /// 0.2.27 — the pause + background repro (user, 2026-11-25
+  /// 02:30): watch → PAUSE → switch to the chat app (AniBee
+  /// backgrounded) → return → "Couldn't load episode" over the
+  /// frame that had been playing fine. While the app is suspended
+  /// iOS kills mpv's connections, so the dead stream must be
+  /// re-resolved on return — never greeted with a fatal error.
+  /// (Signed-URL expiry was ruled out by live probe: the
+  /// original variant + segment URLs still serve at +10 and +15
+  /// min for both Miruro and AniKoto.) Recorded on
+  /// backgrounding; the resume branch reconnects only when the
+  /// trailer is actually in the error state.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _wasBackgrounded = true;
+      _wasPlayingBeforeBackground = _player.state.playing;
+      _saveProgress();
+    } else if (state == AppLifecycleState.resumed) {
+      if (!_wasBackgrounded) return;
+      _wasBackgrounded = false;
+      if (_casting || _reconnectInFlight) return;
+      if (widget.trailer.loadError != null) {
+        unawaited(_reconnectCurrentEpisode());
+      }
+    }
+  }
+
+  /// 0.2.27 — re-resolve the CURRENT episode (fresh signed
+  /// URLs) and reload it at the saved position, with a brief
+  /// "Reconnecting…" state. Only if the re-resolve ALSO fails
+  /// does the error screen stay up (the trailer's loadError is
+  /// left untouched on a null resolve, and a failed load sets it
+  /// again). Prior play state is restored: stays paused if he
+  /// paused, resumes playing if it was playing — [forcePlay]
+  /// (manual Retry) always resumes playing.
+  Future<void> _reconnectCurrentEpisode({bool forcePlay = false}) async {
+    if (_reconnectInFlight || !mounted) return;
+    _reconnectInFlight = true;
+    // Capture the position before the dead stream is replaced.
+    final Duration resumeAt = _player.state.position;
+    final bool wasPlaying = forcePlay || _wasPlayingBeforeBackground;
+    setState(() {
+      _reconnecting = true;
+      _resolving = true;
+    });
+    try {
+      ResolvedStream? stream;
+      if (widget.onResolveEpisode != null) {
+        stream = await widget.onResolveEpisode!(_currentEpisode);
+      }
+      if (!mounted) return;
+      if (stream == null) return;
+      _currentStream = stream;
+      await _loadStream(stream);
+      if (!mounted) return;
+      if (resumeAt > const Duration(seconds: 5)) {
+        unawaited(_player.seek(resumeAt));
+      }
+      if (wasPlaying) unawaited(_player.play());
+    } finally {
+      if (mounted) {
+        setState(() {
+          _reconnecting = false;
+          _resolving = false;
+        });
+      }
+      _reconnectInFlight = false;
+    }
+  }
+
+  /// 0.2.27 — the error screen's Retry re-resolves FRESH URLs
+  /// instead of replaying the dead one (`trailer.retry()` only
+  /// re-opens the same signed URL that just died). Without a
+  /// resolver (tests / trailer-only playback) it falls back to
+  /// the old same-URL retry.
+  Future<void> _retryLoad() async {
+    if (_reconnectInFlight) return;
+    if (_casting || widget.onResolveEpisode == null) {
+      unawaited(widget.trailer.retry());
+      return;
+    }
+    await _reconnectCurrentEpisode(forcePlay: true);
   }
 
   /// When the playing stream carries no English subtitles (0.2.1:
@@ -3470,16 +3579,16 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
               if (hasError)
                 _ErrorState(
                   accent: accent,
-                  onRetry: () => unawaited(widget.trailer.retry()),
+                  onRetry: () => unawaited(_retryLoad()),
                 ),
               if (_resolving)
                 Container(
                   color: Colors.black54,
                   alignment: Alignment.center,
-                  child: const Row(
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
-                      SizedBox(
+                      const SizedBox(
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(
@@ -3487,10 +3596,11 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                           color: Colors.white,
                         ),
                       ),
-                      SizedBox(width: 12),
+                      const SizedBox(width: 12),
                       Text(
-                        'Finding sources…',
-                        style: TextStyle(
+                        // 0.2.27: a reconnect says what it is doing.
+                        _reconnecting ? 'Reconnecting…' : 'Finding sources…',
+                        style: const TextStyle(
                           color: Colors.white,
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
