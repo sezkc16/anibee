@@ -64,7 +64,6 @@ const Map<String, List<String>> kServerLanguages = <String, List<String>>{
   'AniKoto': <String>['English', 'Japanese'],
   'AniSuge': <String>['English'],
   'AniKage': <String>['English'],
-  'AniPM': <String>['English'],
   // Anime-Sama is a French site: VOSTFR (Japanese audio +
   // French hardsubs) and VF (French dub). No English audio or
   // subtitles on this source.

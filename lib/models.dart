@@ -942,7 +942,7 @@ String _mockAirDate(int episodeNumber) {
 }
 
 /// Default Sources order: Miruro, AniKoto, AniSuge, AniKage,
-/// AniPM, Anime-Sama. The user can reorder in Settings > Sources; this is
+/// Anime-Sama. The user can reorder in Settings > Sources; this is
 /// only the default. (No ranking by episode counts — the 01:41
 /// "1 2 3" meant the episode NUMBER grid, not a sources ranking.)
 /// 0.2.23: ReAnime (flixcloud token API 410s — dead) and AniZone
@@ -952,14 +952,13 @@ String _mockAirDate(int episodeNumber) {
 /// 0.2.25: AnimeKai (animekai.ro) is REMOVED — its megavid
 /// streams never played on the phone, even after the 0.2.24
 /// browser-equivalent header fix (user order, 2026-11-25).
-/// AniPM (anipm.pk) joins LAST as a WebView-embed source — its
-/// streams live inside a Cloudflare-gated settlar embed (the
-/// session API returns only an embedUrl, no stream URL), so it
-/// plays in a fullscreen WebView with the site's own controls,
-/// never through mpv. Anime-Sama (anime-sama.to) joins after
-/// AniPM — French site, VOSTFR (Japanese audio + French
-/// hardsubs) / VF (French dub) via Vidmoly HLS; no English
-/// audio or subtitles on this source.
+/// 0.2.26: AniPM (anipm.pk) is REMOVED too (user order,
+/// 2026-11-25) — its WebView-embed player never got a phone
+/// verdict and the source is gone.
+/// Anime-Sama (anime-sama.to) joins last — French site, VOSTFR
+/// (Japanese audio + French hardsubs) / VF (French dub) via
+/// Vidmoly HLS (0.2.26: + Uqload HLS fallback, see the resolver);
+/// no English audio or subtitles on this source.
 List<ProviderSource> defaultSources() {
   return const <ProviderSource>[
     ProviderSource(
@@ -975,7 +974,6 @@ List<ProviderSource> defaultSources() {
     ),
     ProviderSource(name: 'AniSuge', tagline: '1080p • Sub/Dub', enabled: true),
     ProviderSource(name: 'AniKage', tagline: '1080p • Sub/Dub', enabled: true),
-    ProviderSource(name: 'AniPM', tagline: 'WebView • Sub/Dub', enabled: true),
     ProviderSource(
       name: 'Anime-Sama',
       tagline: 'French • VOSTFR/VF',

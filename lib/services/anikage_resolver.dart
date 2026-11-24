@@ -31,10 +31,9 @@ import 'miruro_resolver.dart';
 /// resolve through the existing megaplay chain in MiruroResolver
 /// (getSources -> AES decrypt -> signed master). Providers whose
 /// embed is vidcloud.se (kage — 403s from the VM, embed-only) or
-/// ani.pm (pam — the AniPM settlar embed: session API returns only
-/// an embedUrl, the settlar player is Cloudflare-gated, no plain
-/// stream) are skipped: no verified direct-stream path exists for
-/// them, so they are never guessed.
+/// ani.pm (pam — settlar embed only, no plain stream) are
+/// skipped: no verified direct-stream path exists for them, so
+/// they are never guessed.
 ///
 /// anikage.cc is the baseUrl the ZORO plugin lists; mirrors
 /// (.watch/.site/.my/.baby) exist but were not needed. Verified

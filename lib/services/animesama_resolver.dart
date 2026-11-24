@@ -8,7 +8,8 @@ import '../models.dart';
 import 'anilist_service.dart';
 import 'miruro_resolver.dart';
 
-/// Anime-Sama (anime-sama.to) — real on-device resolver (0.2.25).
+/// Anime-Sama (anime-sama.to) — real on-device resolver (0.2.25,
+/// Uqload + preflight in 0.2.26).
 ///
 /// French anime site (free, no signup). VF = French dub,
 /// VOSTFR = Japanese audio + French subtitles. The site's domain
@@ -40,15 +41,21 @@ import 'miruro_resolver.dart';
 /// Sendvid / Sibnet / VK / Dailymotion / YouTube / Google Drive
 /// / OK.ru (mostly dead — `mort: true` in the map).
 ///
-/// v1 extracts ONLY Vidmoly: its embed page carries a plain
-/// `sources: [{ file: '…/master.m3u8?…' }]` (signed HLS, 1080p
-/// + 480p variants, H.264 + AAC — verified end-to-end with
-/// ffprobe on Jujutsu Kaisen S1 EP1: real 852×480 H.264 + AAC
-/// segment). Uqload hides its URL in a Dean-Edwards-packed
-/// `eval(...)` block and VOE bounces through rotating mirror
-/// domains with a JS challenge page — neither is decoded in v1;
-/// the lecteur loop skips hosts it cannot extract instead of
-/// faking a stream.
+/// v2 extracts TWO hosts:
+/// - Vidmoly: its embed page carries a plain
+///   `sources: [{ file: '…/master.m3u8?…' }]` (signed HLS, 1080p
+///   + 480p variants, H.264 + AAC — verified end-to-end with
+///   ffprobe on Jujutsu Kaisen S1 EP1: real 852×480 H.264 + AAC
+///   segment).
+/// - Uqload (0.2.26): its embed page hides the URL in a
+///   Dean-Edwards-packed `eval(...)` block — unpacked in Dart
+///   ([extractUqloadFile]) to the same signed-HLS shape
+///   (1080p/720p/360p, verified end-to-end with ffprobe on JJK
+///   S1 EP1 and Demon Slayer S1 EP1: real 1920×1080 H.264 + AAC
+///   segments from `strm15`/`strm7.uqload.vc`).
+/// VOE (rotating-mirror JS challenge) and Earnvids are still
+/// NOT decoded; the lecteur loop skips hosts it cannot extract
+/// instead of faking a stream.
 ///
 /// Language facts (verified live):
 /// - VOSTFR subtitles are BURNED INTO the video (the Vidmoly
@@ -73,17 +80,33 @@ import 'miruro_resolver.dart';
 /// (3) saison 1. Films (`film<n>`) are candidates only when
 /// the title says movie/film or `episodeCount == 1`.
 ///
-/// Caveat (verified live 2026-11-25): the Vidmoly CDN edge
-/// that serves Demon Slayer (`prx-1476-ant.vmpx.online`)
-/// returns 403 for SEGMENT fetches from this VM while its
-/// master + variant playlists serve 200 — and the Jujutsu
-/// Kaisen edge (`prx-1351-ant-20.vmget.online`) serves
-/// segments fine (200, ffprobe-verified). So the chain is
-/// proven, but per-title edge gating from a datacenter IP is
-/// real; the phone (residential IP) is the proof for any title
-/// whose edge 403s the VM. The resolver returns the signed
-/// master URL either way and never claims a segment it did
-/// not fetch.
+/// Why the preflight (0.2.26): the Vidmoly CDN edges gate
+/// per-IP, and the gate is per title. Verified live 2026-11-25:
+/// Demon Slayer's edge (`prx-1476-ant.vmpx.online`) returns
+/// 403 for SEGMENT fetches from this VM while its master +
+/// variant playlists serve 200 — and its Dub edge
+/// (`prx-1353-ant-23.vmpx.online`) 403s even the master.
+/// Jujutsu Kaisen's edge (`prx-1351-ant-20.vmget.online`)
+/// serves segments fine from the VM (200, ffprobe-verified,
+/// and the VM's mpv plays the URL) — yet the user's phone
+/// (VPN on, 2026-11-25 01:10 recording) resolved JJK S1 EP1
+/// Sub, opened the player, and got "Couldn't load episode".
+/// Edge hosts are STABLE per title (4+ re-resolves of JJK
+/// Sub all returned prx-1351), so re-resolving cannot help,
+/// and the player path is clean (headers reach mpv — verified
+/// in code; VM mpv plays the URL). The only explanation that
+/// fits every datapoint is the edge gating the phone's
+/// network/IP (the VPN exit IP, same class of IP the VM has).
+/// So the resolver now PREFLIGHTS every candidate stream:
+/// it fetches the first segment from THIS device before
+/// returning the stream, and if the edge refuses it, tries
+/// the next lecteur (a different CDN — Uqload) instead of
+/// opening a player that cannot load. When every lecteur
+/// fails, resolve returns null with an honest error naming
+/// the network block, instead of a player that opens and
+/// fails. The phone test is still the proof for any title —
+/// a preflight that passes on the VM does not prove the
+/// phone's network, and vice versa.
 class AnimeSamaResolver {
   AnimeSamaResolver({
     http.Client? client,
@@ -158,13 +181,19 @@ class AnimeSamaResolver {
       }
       // Lecteurs in site order (eps1 first — Vidmoly on every
       // title checked so far). Each lecteur is one host; try
-      // them in order and take the first that yields a stream.
+      // them in order and take the first that yields a stream
+      // whose first segment ACTUALLY fetches from this device
+      // (0.2.26 preflight — see [_preflight]). A lecteur whose
+      // host is not extractable (VOE / Earnvids / dead mirrors)
+      // is skipped without a network call.
       for (int k = 0; k < page.lecteurs.length; k++) {
         final List<String> links = page.lecteurs[k];
         if (episodeNumber > links.length) continue;
         final String repere = links[episodeNumber - 1];
         if (!repere.startsWith('lien:')) continue;
         final String linkId = repere.substring(5);
+        final String host = page.hosts[linkId] ?? '';
+        if (host.isNotEmpty && !_isExtractableHost(host)) continue;
         try {
           final String? embedUrl = await _resolveLien(
             seasonUrl,
@@ -176,13 +205,21 @@ class AnimeSamaResolver {
             embedUrl: embedUrl,
             seasonUrl: seasonUrl,
           );
-          if (stream != null) return stream;
+          if (stream == null) continue;
+          // The URL looks fine but the edge may still refuse
+          // THIS device (per-IP gating — the 0.2.25 phone
+          // failure). Prove the first segment fetches before
+          // handing the stream to mpv; on refusal try the next
+          // lecteur (a different CDN) instead of opening a
+          // player that cannot load.
+          if (await _preflight(stream)) return stream;
         } catch (_) {
           continue;
         }
       }
       lastError = 'Anime-Sama could not play episode $episodeNumber — '
-          'no working lecteur.';
+          'the video host is blocked on this network. '
+          'Try turning your VPN off, or pick another server.';
       return null;
     } catch (e) {
       lastError ??= 'Anime-Sama failed: $e';
@@ -427,9 +464,10 @@ class AnimeSamaResolver {
   }
 
   /// Parse a season page: the `eps<n>` lecteur arrays, the
-  /// per-page `epsJeton`, and `languesDispo`. Pure — unit-tested
-  /// against the recorded pages (JJK S1 VOSTFR + VF, Demon
-  /// Slayer S1 VOSTFR).
+  /// per-page `epsJeton`, `languesDispo`, and the `epsMeta`
+  /// host map (link id -> host, e.g. "4658" -> "ansembed.net").
+  /// Pure — unit-tested against the recorded pages (JJK S1
+  /// VOSTFR + VF, Demon Slayer S1 VOSTFR).
   static AnimeSamaSeasonPage? parseSeasonPage(String html) {
     final RegExpMatch? jetonMatch =
         RegExp(r'var epsJeton = "([^"]+)"').firstMatch(html);
@@ -443,6 +481,18 @@ class AnimeSamaResolver {
             .allMatches(langMatch.group(1)!)
             .map((RegExpMatch m) => m.group(1)!)
             .toList();
+    final Map<String, String> hosts = <String, String>{};
+    final RegExpMatch? metaMatch = RegExp(
+      r'var epsMeta = \{(.*?)\};',
+      dotAll: true,
+    ).firstMatch(html);
+    if (metaMatch != null) {
+      for (final RegExpMatch m in RegExp(
+        r'"(\d+)":\["([^"]+)"',
+      ).allMatches(metaMatch.group(1)!)) {
+        hosts[m.group(1)!] = m.group(2)!;
+      }
+    }
     final List<List<String>> lecteurs = <List<String>>[];
     for (int k = 1; k <= 8; k++) {
       final RegExpMatch? m = RegExp(
@@ -462,7 +512,21 @@ class AnimeSamaResolver {
       jeton: jeton,
       languages: languages,
       lecteurs: lecteurs,
+      hosts: hosts,
     );
+  }
+
+  /// Hosts this resolver can extract a stream from: Vidmoly
+  /// (ansembed.net / vidmoly.*) and Uqload (uqload.vc). VOE,
+  /// Earnvids and the dead mirrors are skipped — no verified
+  /// extraction path exists for them.
+  static bool _isExtractableHost(String host) {
+    final String h = host.toLowerCase();
+    return h == 'ansembed.net' ||
+        h.endsWith('.ansembed.net') ||
+        h.contains('vidmoly.') ||
+        h == 'uqload.vc' ||
+        h.endsWith('.uqload.vc');
   }
 
   // ------------------------------------------------------------ lien
@@ -498,14 +562,15 @@ class AnimeSamaResolver {
 
   // ------------------------------------------------------------ embed
 
-  /// Turn an embed URL into a playable stream. v1 handles ONLY
-  /// Vidmoly (ansembed.net / vidmoly.*): a plain
-  /// `sources: [{ file: '…master.m3u8' }]` in the embed page.
-  /// Uqload (packed eval), VOE (rotating-mirror JS challenge)
-  /// and Earnvids are NOT decoded — returns null for them so
-  /// the lecteur loop tries the next host instead of faking a
+  /// Turn an embed URL into a playable stream. Handles TWO
+  /// hosts (0.2.26): Vidmoly (ansembed.net / vidmoly.* — a
+  /// plain `sources: [{ file: '…master.m3u8' }]` in the embed
+  /// page) and Uqload (uqload.vc — the file URL hides in a
+  /// Dean-Edwards-packed `eval(...)` block, unpacked by
+  /// [extractUqloadFile]). Anything else returns null so the
+  /// lecteur loop tries the next host instead of faking a
   /// stream. The master playlist is fetched once to expand the
-  /// quality variants (1080p/480p).
+  /// quality variants (best first).
   Future<ResolvedStream?> _streamFromEmbed({
     required String embedUrl,
     required String seasonUrl,
@@ -516,13 +581,17 @@ class AnimeSamaResolver {
     final bool isVidmoly = host == 'ansembed.net' ||
         host.endsWith('.ansembed.net') ||
         host.contains('vidmoly.');
-    if (!isVidmoly) return null;
+    final bool isUqload =
+        host == 'uqload.vc' || host.endsWith('.uqload.vc');
+    if (!isVidmoly && !isUqload) return null;
     try {
       final http.Response resp = await _client
           .get(Uri.parse(embedUrl), headers: _pageHeaders(seasonUrl))
           .timeout(const Duration(seconds: 15));
       if (resp.statusCode != 200) return null;
-      final String? master = extractVidmolyFile(resp.body);
+      final String? master = isVidmoly
+          ? extractVidmolyFile(resp.body)
+          : extractUqloadFile(resp.body);
       if (master == null) return null;
       final List<StreamVariant> variants = await _variants(master);
       final String best = variants.isNotEmpty
@@ -533,7 +602,7 @@ class AnimeSamaResolver {
           : '1080p';
       return ResolvedStream(
         url: best,
-        label: 'Anime-Sama Vidmoly $bestLabel',
+        label: 'Anime-Sama ${isVidmoly ? 'Vidmoly' : 'Uqload'} $bestLabel',
         source: 'Anime-Sama',
         // The signed HLS also answers with no Referer at all
         // (verified live), but the embed Referer + browser UA
@@ -549,6 +618,64 @@ class AnimeSamaResolver {
     }
   }
 
+  /// Prove a candidate stream actually plays on THIS device
+  /// before handing it to mpv (0.2.26 — the 0.2.25 phone
+  /// failure: Vidmoly's edge gates per-IP, so a signed URL
+  /// that serves the VM can still refuse the phone).
+  /// Fetches the best variant's media playlist, then the first
+  /// segment with a 1 KiB Range (a 200/206 proves the edge
+  /// serves this device; a 403/timeout proves it does not).
+  /// Returns false on ANY failure — the lecteur loop then
+  /// tries the next host (a different CDN) instead of opening
+  /// a player that cannot load.
+  Future<bool> _preflight(ResolvedStream stream) async {
+    try {
+      final http.Response pl = await _client
+          .get(Uri.parse(stream.url), headers: stream.headers)
+          .timeout(const Duration(seconds: 10));
+      if (pl.statusCode != 200) return false;
+      String? segUrl;
+      if (pl.body.contains('#EXT-X-STREAM-INF')) {
+        // Urlset master (variants failed to expand): take the
+        // best variant, then its first segment.
+        final List<StreamVariant> vs = parseMasterVariants(pl.body);
+        if (vs.isEmpty) return false;
+        final http.Response vp = await _client
+            .get(Uri.parse(vs.first.url), headers: stream.headers)
+            .timeout(const Duration(seconds: 10));
+        if (vp.statusCode != 200) return false;
+        segUrl = _firstMediaUri(vp.body, vs.first.url);
+      } else {
+        segUrl = _firstMediaUri(pl.body, stream.url);
+      }
+      if (segUrl == null || segUrl.isEmpty) return false;
+      final http.Response seg = await _client
+          .get(
+            Uri.parse(segUrl),
+            headers: <String, String>{
+              ...stream.headers,
+              'Range': 'bytes=0-1023',
+            },
+          )
+          .timeout(const Duration(seconds: 10));
+      return seg.statusCode == 200 || seg.statusCode == 206;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// First non-directive line of a media playlist, resolved
+  /// against the playlist URL. Pure — unit-tested.
+  static String? _firstMediaUri(String m3u8, String base) {
+    for (final String line in m3u8.split('\n')) {
+      final String t = line.trim();
+      if (t.isEmpty || t.startsWith('#')) continue;
+      if (t.startsWith('http')) return t;
+      return Uri.parse(base).resolve(t).toString();
+    }
+    return null;
+  }
+
   /// The Vidmoly file URL from an embed page. Pure —
   /// unit-tested against the recorded embed pages.
   /// `sources: [{ file: 'https://…/master.m3u8?…' }]`.
@@ -561,6 +688,164 @@ class AnimeSamaResolver {
       r'''sources:\s*\[\{\s*file:\s*"([^"]+)"''',
     ).firstMatch(html);
     return d?.group(1);
+  }
+
+  /// The Uqload file URL from an embed page (0.2.26). Pure —
+  /// unit-tested against the recorded embed pages (JJK + DS).
+  /// Uqload hides the jwplayer setup in a Dean-Edwards-packed
+  /// `eval(function(p,a,c,k,e,d){…}('…',36,N,'…'.split('|'),0,{}))`
+  /// block; unpack it, then read the same
+  /// `sources:[{file:"…master.m3u8…"}]` shape as Vidmoly.
+  /// A page can carry OTHER packed blocks (ad scripts — the
+  /// Vidmoly pages do, one with radix 61); every match is
+  /// tried in order and the first one that unpacks to a file
+  /// URL wins, the rest are skipped. Returns null when no
+  /// block yields a file URL.
+  static String? extractUqloadFile(String html) {
+    // The decoder call is `}('…',36,N,'…'.split('|'))` — some
+    // packer variants append `,0,{}` after the split, some do
+    // not; the pattern stops after the split so both match.
+    final RegExp packedRe = RegExp(
+      r"""eval\(function\(p,a,c,k,e,d\)\{.*?\}\('(.*?)',(\d+),(\d+),'(.*?)'\.split\('\|'\)""",
+      dotAll: true,
+    );
+    for (final RegExpMatch m in packedRe.allMatches(html)) {
+      final int radix = int.tryParse(m.group(2)!) ?? 0;
+      final int count = int.tryParse(m.group(3)!) ?? 0;
+      if (radix < 2 || radix > 62 || count <= 0) continue;
+      late final String unpacked;
+      try {
+        unpacked = unpackPackedEval(
+          _decodeJsString(m.group(1)!),
+          radix,
+          count,
+          m.group(4)!.split('|'),
+        );
+      } catch (_) {
+        continue;
+      }
+      final RegExpMatch? f = RegExp(
+        r'''sources:\s*\[\{\s*file:\s*"([^"]+)"''',
+      ).firstMatch(unpacked);
+      if (f != null) return f.group(1);
+      final RegExpMatch? s = RegExp(
+        r"""sources:\s*\[\{\s*file:\s*'([^']+)'""",
+      ).firstMatch(unpacked);
+      if (s != null) return s.group(1);
+    }
+    return null;
+  }
+
+  /// Dean-Edwards packer unpack (the `eval(function(p,a,c,k,e,d)
+  /// {...})` shape Uqload uses). Replaces each base-[radix]
+  /// token (word-boundary match) in [packed] with
+  /// `keywords[i]`, highest index first — the same algorithm
+  /// the packer's own decoder runs. Radix 2..36 uses
+  /// `toRadixString`; 37..62 uses the packer's `0-9a-zA-Z`
+  /// alphabet (some packer variants encode past base 36).
+  /// Pure — unit-tested with a synthetic packed block.
+  static String unpackPackedEval(
+    String packed,
+    int radix,
+    int count,
+    List<String> keywords,
+  ) {
+    if (radix < 2 || radix > 62) {
+      throw ArgumentError.value(radix, 'radix', 'must be 2..62');
+    }
+    const String digits =
+        '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    String encode(int value) {
+      if (radix <= 36) return value.toRadixString(radix);
+      if (value == 0) return '0';
+      String out = '';
+      int v = value;
+      while (v > 0) {
+        out = digits[v % radix] + out;
+        v ~/= radix;
+      }
+      return out;
+    }
+
+    String out = packed;
+    for (int i = count - 1; i >= 0; i--) {
+      if (i >= keywords.length || keywords[i].isEmpty) continue;
+      final String token = encode(i);
+      // replaceAllMapped (not replaceAll): a keyword can
+      // contain '$', which replaceAll would read as a group
+      // reference.
+      final String keyword = keywords[i];
+      out = out.replaceAllMapped(
+        RegExp('\\b$token\\b'),
+        (_) => keyword,
+      );
+    }
+    return out;
+  }
+
+  /// Decode the escapes of a JS single-quoted string literal
+  /// (`\'`, `\\`, `\n`, `\xHH`, `\uHHHH`, …). Only what the
+  /// packed payload uses; unknown escapes keep their char.
+  static String _decodeJsString(String s) {
+    final StringBuffer out = StringBuffer();
+    for (int i = 0; i < s.length; i++) {
+      final String c = s[i];
+      if (c != '\\' || i + 1 >= s.length) {
+        out.write(c);
+        continue;
+      }
+      final String n = s[i + 1];
+      switch (n) {
+        case 'n':
+          out.write('\n');
+          i++;
+        case 'r':
+          out.write('\r');
+          i++;
+        case 't':
+          out.write('\t');
+          i++;
+        case 'b':
+          out.write('\b');
+          i++;
+        case 'f':
+          out.write('\f');
+          i++;
+        case 'v':
+          out.write('\v');
+          i++;
+        case '0':
+          out.write(String.fromCharCode(0));
+          i++;
+        case 'x':
+          if (i + 3 < s.length) {
+            final int? v = int.tryParse(s.substring(i + 2, i + 4), radix: 16);
+            if (v != null) {
+              out.write(String.fromCharCode(v));
+              i += 3;
+              break;
+            }
+          }
+          out.write(n);
+          i++;
+        case 'u':
+          if (i + 5 < s.length) {
+            final int? v = int.tryParse(s.substring(i + 2, i + 6), radix: 16);
+            if (v != null) {
+              out.write(String.fromCharCode(v));
+              i += 5;
+              break;
+            }
+          }
+          out.write(n);
+          i++;
+        default:
+          // \' \" \\ \/ and anything else: the char itself.
+          out.write(n);
+          i++;
+      }
+    }
+    return out.toString();
   }
 
   /// Expand a master playlist into quality variants. Pure
@@ -580,7 +865,10 @@ class AnimeSamaResolver {
   }
 
   /// Parse `#EXT-X-STREAM-INF` variants from a master playlist.
-  /// Pure — unit-tested against the recorded masters.
+  /// Pure — unit-tested against the recorded masters. Sorted
+  /// best-first by height: Vidmoly lists 1080p first, but
+  /// Uqload lists 360p first — the caller takes `first` as the
+  /// best URL, so the sort must not depend on the CDN's order.
   static List<StreamVariant> parseMasterVariants(String m3u8) {
     final List<String> lines = m3u8.split('\n');
     final List<StreamVariant> out = <StreamVariant>[];
@@ -596,6 +884,13 @@ class AnimeSamaResolver {
         StreamVariant(url: url, qualityLabel: '${res.group(2)}p'),
       );
     }
+    out.sort((StreamVariant a, StreamVariant b) {
+      final int ha =
+          int.tryParse(a.qualityLabel.replaceAll('p', '')) ?? 0;
+      final int hb =
+          int.tryParse(b.qualityLabel.replaceAll('p', '')) ?? 0;
+      return hb.compareTo(ha);
+    });
     return out;
   }
 
@@ -640,6 +935,7 @@ class AnimeSamaSeasonPage {
     required this.jeton,
     required this.languages,
     required this.lecteurs,
+    this.hosts = const <String, String>{},
   });
 
   /// Per-page token for /api/lien.php (expires ~24h).
@@ -651,6 +947,11 @@ class AnimeSamaSeasonPage {
   /// One list per lecteur (eps1, eps2, …), each entry a
   /// "lien:{id}" (or "" when that lecteur lacks the episode).
   final List<List<String>> lecteurs;
+
+  /// Host per link id from `epsMeta`, e.g. "4658" ->
+  /// "ansembed.net", "4657" -> "uqload.vc". Empty when the
+  /// page carries no epsMeta — then every lecteur is tried.
+  final Map<String, String> hosts;
 
   /// Episode count = length of the first lecteur's list.
   int get episodeCount => lecteurs.isEmpty ? 0 : lecteurs.first.length;

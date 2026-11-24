@@ -621,13 +621,16 @@ class SettingsStore extends ChangeNotifier {
         // streams never played on the phone) — drop it from any
         // persisted list and reset the preferred server when it
         // was AnimeKai.
+        // 0.2.26 migration: AniPM is removed too (user order) —
+        // drop it the same way.
         sources = sources
             .where(
               (ProviderSource s) =>
                   s.name != 'AllAnime' &&
                   s.name != 'ReAnime' &&
                   s.name != 'AniZone' &&
-                  s.name != 'AnimeKai',
+                  s.name != 'AnimeKai' &&
+                  s.name != 'AniPM',
             )
             .toList();
         // 0.2.24 migration: AniSuge (anisuge.tv) and AniKage
@@ -650,19 +653,8 @@ class SettingsStore extends ChangeNotifier {
             ),
           );
         }
-        // 0.2.25 migration: AniPM (anipm.pk) joins last — a
-        // WebView-embed source (settlar embed, no mpv stream).
-        if (!sources.any((ProviderSource s) => s.name == 'AniPM')) {
-          sources.add(
-            const ProviderSource(
-              name: 'AniPM',
-              tagline: 'WebView • Sub/Dub',
-              enabled: true,
-            ),
-          );
-        }
         // 0.2.25 migration: Anime-Sama (anime-sama.to) joins
-        // after AniPM — French site, VOSTFR/VF via Vidmoly HLS.
+        // last — French site, VOSTFR/VF via Vidmoly HLS.
         if (!sources.any((ProviderSource s) => s.name == 'Anime-Sama')) {
           sources.add(
             const ProviderSource(
@@ -675,7 +667,8 @@ class SettingsStore extends ChangeNotifier {
         if (preferredServer == 'AllAnime' ||
             preferredServer == 'ReAnime' ||
             preferredServer == 'AniZone' ||
-            preferredServer == 'AnimeKai') {
+            preferredServer == 'AnimeKai' ||
+            preferredServer == 'AniPM') {
           preferredServer = 'Miruro';
         }
         if (!sources.any((ProviderSource s) => s.preferred)) {

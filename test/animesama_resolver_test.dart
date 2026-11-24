@@ -36,6 +36,16 @@ import 'package:http/testing.dart';
 /// - VOSTFR subtitles are burned in (no SUBTITLES group in the
 ///   master, only h264 + aac in the segment) — no subtitle
 ///   tracks are returned.
+/// 0.2.26: Uqload joins as a second host (the embed page hides
+/// the file URL in a Dean-Edwards-packed eval block — unpacked
+/// in Dart; fixtures are the real recorded pages, JJK + DS),
+/// and every candidate stream is PREFLIGHTED — the resolver
+/// fetches the first segment from the test client before
+/// returning the stream. The mock proves the fallback: when
+/// the Vidmoly segment 403s (the Demon Slayer edge does this
+/// from the VM), the resolve returns the Uqload stream instead
+/// of a player that cannot load; when every segment 403s, the
+/// resolve fails with the network-block error.
 void main() {
   String fixture(String name) =>
       File('test/fixtures/$name').readAsStringSync();
@@ -141,6 +151,12 @@ void main() {
       expect(page.lecteurs[1][0], 'lien:4659');
       expect(page.lecteurs[2][0], 'lien:4657');
       expect(page.lecteurs[3][0], 'lien:4660');
+      // 0.2.26: epsMeta maps link ids to hosts — the lecteur
+      // loop uses it to skip hosts it cannot extract.
+      expect(page.hosts['4658'], 'ansembed.net');
+      expect(page.hosts['4657'], 'uqload.vc');
+      expect(page.hosts['4659'], 'jeremyparticipantanything.com');
+      expect(page.hosts['4660'], 'smoothpre.com');
     });
 
     test('season page: JJK S1 VF', () {
@@ -189,6 +205,75 @@ void main() {
       );
       expect(variants[0].url, contains('hg9srndukcud_n'));
       expect(variants[1].url, contains('hg9srndukcud_l'));
+    });
+
+    test('master variants: Uqload lists 360p first — sorted best-first',
+        () {
+      // The Uqload master lists 360p, 720p, 1080p in that
+      // order; the resolver takes `first` as the best URL, so
+      // the parse must sort by height descending.
+      final List<StreamVariant> variants = AnimeSamaResolver
+          .parseMasterVariants(
+        fixture('animesama_uqload_master_jjk.m3u8'),
+      );
+      expect(
+        variants.map((StreamVariant v) => v.qualityLabel).toList(),
+        <String>['1080p', '720p', '360p'],
+      );
+      expect(variants[0].url, contains('gnua4of15joa_h'));
+    });
+
+    test('Uqload file extraction (packed eval, recorded pages)', () {
+      expect(
+        AnimeSamaResolver.extractUqloadFile(
+          fixture('animesama_uqload_jjk.html'),
+        ),
+        'https://strm15.uqload.vc/hls2/02/05910/gnua4of15joa_,l,n,h,.urlset/master.m3u8?t=TzY0REl6IH2mtcK1TP78lkLnBKFpkTIpjHngGYC6kTI&s=1795549910&e=14400&v=5848045&i=0.0&sp=0',
+      );
+      expect(
+        AnimeSamaResolver.extractUqloadFile(
+          fixture('animesama_uqload_ds.html'),
+        ),
+        contains('strm7.uqload.vc'),
+      );
+      expect(
+        AnimeSamaResolver.extractUqloadFile(
+          fixture('animesama_uqload_ds.html'),
+        ),
+        contains('dzxcdamizxt9'),
+      );
+      // A Vidmoly page has no packed eval — null, not a crash.
+      expect(
+        AnimeSamaResolver.extractUqloadFile(
+          fixture('animesama_vidmoly_jjk.html'),
+        ),
+        isNull,
+      );
+    });
+
+    test('unpackPackedEval: synthetic Dean-Edwards block', () {
+      // eval(function(p,a,c,k,e,d){…}('0 1 2',36,3,'one|two|three'.split('|'),0,{}))
+      // must rebuild 'one two three'.
+      expect(
+        AnimeSamaResolver.unpackPackedEval(
+          '0 1 2',
+          36,
+          3,
+          <String>['one', 'two', 'three'],
+        ),
+        'one two three',
+      );
+      // Tokens are word-boundary replaced — '10' is not the
+      // token '1' followed by '0'.
+      expect(
+        AnimeSamaResolver.unpackPackedEval(
+          '10 1',
+          36,
+          2,
+          <String>['a', 'b'],
+        ),
+        '10 b',
+      );
     });
   });
 
@@ -251,7 +336,102 @@ void main() {
             200,
           );
         }
+        // 0.2.26: the preflight fetches the best variant's
+        // media playlist, then its first segment. Both serve
+        // 200 in this mock — the "everything works" case.
+        if (url.contains('index-v1-a1.m3u8')) {
+          return http.Response.bytes(
+            utf8.encode(fixture('animesama_variant_jjk.m3u8')),
+            200,
+          );
+        }
+        if (url.contains('seg-1-v1-a1.ts')) {
+          return http.Response.bytes(utf8.encode('fake-segment'), 200);
+        }
         if (url.contains('master.m3u8')) {
+          return http.Response.bytes(
+            utf8.encode(fixture(masterFixture)),
+            200,
+          );
+        }
+        return http.Response('not found: $url', 404);
+      });
+    }
+
+    /// Mock where the Vidmoly edge gates segments (403 — the
+    /// Demon Slayer edge does this from the VM) while Uqload
+    /// serves. The lien endpoint answers per link id so the
+    /// lecteur loop can reach both hosts.
+    MockClient gatedClient({bool blockUqload = false}) {
+      return MockClient((http.Request req) async {
+        final String url = req.url.toString();
+        if (url.contains('graphql.anilist.co')) {
+          return http.Response(
+            anilistIdentityJson('Jujutsu Kaisen', 'JUJUTSU KAISEN'),
+            200,
+          );
+        }
+        if (url.contains('/template-php/defaut/fetch.php')) {
+          return http.Response.bytes(
+            utf8.encode(fixture('animesama_search_jjk.html')),
+            200,
+          );
+        }
+        if (url.contains('/saison1/vostfr/')) {
+          return http.Response.bytes(
+            utf8.encode(fixture('animesama_s1_vostfr_jjk.html')),
+            200,
+          );
+        }
+        if (url.contains('/catalogue/jujutsu-kaisen/')) {
+          return http.Response.bytes(
+            utf8.encode(fixture('animesama_series_jjk.html')),
+            200,
+          );
+        }
+        if (url.contains('/api/lien.php')) {
+          final String linkId = req.url.queryParameters['l'] ?? '';
+          final String lienFixture = linkId == '4657'
+              ? 'animesama_lien_4657.json'
+              : 'animesama_lien_4658.json';
+          return http.Response.bytes(
+            utf8.encode(fixture(lienFixture)),
+            200,
+          );
+        }
+        if (url.contains('ansembed.net/embed-')) {
+          return http.Response.bytes(
+            utf8.encode(fixture('animesama_vidmoly_jjk.html')),
+            200,
+          );
+        }
+        if (url.contains('uqload.vc/embed-')) {
+          return http.Response.bytes(
+            utf8.encode(fixture('animesama_uqload_jjk.html')),
+            200,
+          );
+        }
+        if (url.contains('index-v1-a1.m3u8')) {
+          return http.Response.bytes(
+            utf8.encode(fixture('animesama_variant_jjk.m3u8')),
+            200,
+          );
+        }
+        if (url.contains('seg-1-v1-a1.ts')) {
+          if (url.contains('hg9srndukcud')) {
+            // Vidmoly edge gates this network.
+            return http.Response('forbidden', 403);
+          }
+          if (blockUqload) {
+            return http.Response('forbidden', 403);
+          }
+          return http.Response.bytes(utf8.encode('fake-segment'), 200);
+        }
+        if (url.contains('master.m3u8')) {
+          final String masterFixture =
+              url.contains('uqload.vc') || url.contains('strm15')
+                  ? 'animesama_uqload_master_jjk.m3u8'
+                  : 'animesama_master_jjk.m3u8';
           return http.Response.bytes(
             utf8.encode(fixture(masterFixture)),
             200,
@@ -282,14 +462,47 @@ void main() {
       // Best URL is the 1080p variant, not the master playlist.
       expect(stream.url, isNot(contains('master.m3u8')));
       expect(stream.url, contains('hg9srndukcud_n'));
+      expect(stream.label, contains('Vidmoly'));
       expect(stream.label, contains('1080p'));
-      expect(stream.playback, StreamPlayback.mpv);
       expect(stream.subtitles, isEmpty,
           reason: 'VOSTFR subs are burned in — no subtitle tracks');
       expect(
         stream.variants.map((StreamVariant v) => v.qualityLabel).toList(),
         <String>['1080p', '480p'],
       );
+    });
+
+    test('Vidmoly segment gated -> falls back to Uqload (0.2.26)', () async {
+      // The phone failure: the Vidmoly edge refuses segments
+      // on this network. The preflight must catch it and the
+      // resolve must return the Uqload stream (a different
+      // CDN) instead of opening a player that cannot load.
+      final AnimeSamaResolver resolver =
+          AnimeSamaResolver(client: gatedClient());
+      final ResolvedStream? stream = await resolver.resolve(
+        anime: jjk,
+        episodeNumber: 1,
+        subDub: 'Sub',
+      );
+      expect(stream, isNotNull);
+      expect(stream!.source, 'Anime-Sama');
+      expect(stream.label, contains('Uqload'));
+      expect(stream.url, contains('gnua4of15joa_h'));
+      expect(stream.label, contains('1080p'));
+    });
+
+    test('every segment gated -> honest network-block error (0.2.26)',
+        () async {
+      final AnimeSamaResolver resolver =
+          AnimeSamaResolver(client: gatedClient(blockUqload: true));
+      final ResolvedStream? stream = await resolver.resolve(
+        anime: jjk,
+        episodeNumber: 1,
+        subDub: 'Sub',
+      );
+      expect(stream, isNull);
+      expect(resolver.lastError, contains('blocked on this network'));
+      expect(resolver.lastError, contains('VPN'));
     });
 
     test('Demon Slayer S1 EP1 Sub resolves (episode-count season match)',

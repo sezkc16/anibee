@@ -5,7 +5,6 @@ import 'airing_service.dart';
 import 'anilist_service.dart';
 import 'anikage_resolver.dart';
 import 'animesama_resolver.dart';
-import 'anipm_resolver.dart';
 import 'anisuge_resolver.dart';
 import 'debrid_service.dart';
 import 'download_service.dart';
@@ -21,7 +20,6 @@ class AppServices {
     required this.miruro,
     AnisugeResolver? anisuge,
     AnikageResolver? anikage,
-    AniPmResolver? anipm,
     AnimeSamaResolver? animesama,
     required this.debrid,
     required this.oauth,
@@ -31,7 +29,6 @@ class AppServices {
     this.configService,
   })  : anisuge = anisuge ?? AnisugeResolver(anilist: anilist),
         anikage = anikage ?? AnikageResolver(anilist: anilist),
-        anipm = anipm ?? AniPmResolver(anilist: anilist),
         animesama = animesama ??
             AnimeSamaResolver(
               anilist: anilist,
@@ -53,7 +50,6 @@ class AppServices {
       miruro: MiruroResolver(anilist: anilist),
       anisuge: AnisugeResolver(anilist: anilist),
       anikage: AnikageResolver(anilist: anilist),
-      anipm: AniPmResolver(anilist: anilist),
       animesama: AnimeSamaResolver(
         anilist: anilist,
         baseUrl: configService
@@ -81,14 +77,6 @@ class AppServices {
   /// AniKage (0.2.24): anikage.cc SvelteKit JSON API (browse ->
   /// episodes -> servers -> sources -> megaplay embed).
   final AnikageResolver anikage;
-
-  /// AniPM (0.2.25): anipm.pk — search -> playback-bootstrap ->
-  /// settlar session -> settlar EMBED URL. The returned stream is
-  /// a WebView embed (see [ResolvedStream.playback]), NOT an mpv
-  /// stream: it plays in a fullscreen WebView with the site's own
-  /// controls. AnimeKai was REMOVED in 0.2.25 (its megavid streams
-  /// never played on the phone, even after the 0.2.24 header fix).
-  final AniPmResolver anipm;
 
   /// Anime-Sama (0.2.25): anime-sama.to — French site, search ->
   /// series page -> saison page -> /api/lien.php -> Vidmoly embed
@@ -125,12 +113,11 @@ class AppServices {
   /// Resolve a playable stream for an episode.
   /// [debrid] is null (source resolvers) or 'torbox' / 'realdebrid'.
   /// [server] is the chosen source ('Miruro' | 'AniKoto' |
-  /// 'AniSuge' | 'AniKage' | 'AniPM' | 'Anime-Sama') — 0.2.11 actually routes
+  /// 'AniSuge' | 'AniKage' | 'Anime-Sama') — 0.2.11 actually routes
   /// to it now:
   /// Miruro = justanime chain, AniKoto = anikoto.cz chain,
   /// AniSuge = the anisuge.tv chain (0.2.24), AniKage = the
-  /// anikage.cc chain (0.2.24), AniPM = the anipm.pk chain
-  /// (0.2.25 — returns a WebView embed, not an mpv stream),
+  /// anikage.cc chain (0.2.24),
   /// Anime-Sama = the anime-sama.to chain (0.2.25 — French site,
   /// VOSTFR/VF via Vidmoly HLS; no English subs).
   /// Previously every non-debrid resolve silently went to Miruro
@@ -138,7 +125,7 @@ class AppServices {
   /// server fails and the user's fallback setting is on, the other
   /// Miruro-family server is tried once. Returns null when nothing
   /// resolved — [miruro.lastError] / [anisuge.lastError] /
-  /// [anikage.lastError] / [anipm.lastError] /
+  /// [anikage.lastError] /
   /// [animesama.lastError] / the debrid path
   /// carries the reason.
   Future<ResolvedStream?> resolveEpisode({
@@ -174,13 +161,6 @@ class AppServices {
     final String chosen = server ?? store.preferredServer;
     if (chosen == 'Anime-Sama') {
       return animesama.resolve(
-        anime: anime,
-        episodeNumber: episode,
-        subDub: subDub,
-      );
-    }
-    if (chosen == 'AniPM') {
-      return anipm.resolve(
         anime: anime,
         episodeNumber: episode,
         subDub: subDub,

@@ -4,7 +4,6 @@ import 'package:anibee/services/airing_service.dart';
 import 'package:anibee/services/anikage_resolver.dart';
 import 'package:anibee/services/animesama_resolver.dart';
 import 'package:anibee/services/anilist_service.dart';
-import 'package:anibee/services/anipm_resolver.dart';
 import 'package:anibee/services/anisuge_resolver.dart';
 import 'package:anibee/services/app_services.dart';
 import 'package:anibee/services/debrid_service.dart';
@@ -30,9 +29,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// 0.2.24: AniSuge + AniKage join — same routing proof (dead client
 /// proves which resolver was entered).
 /// 0.2.25: AnimeKai is removed — its routing test goes with it.
-/// AniPM joins: a dead client proves the resolve enters the AniPM
-/// resolver (lastError set, others clean) and the returned stream
-/// would be a WebView embed (verified by the resolver tests).
+/// 0.2.26: AniPM is removed (user order) — its routing test goes
+/// with it; a stale 'AniPM' choice must fall through to the Miruro
+/// chain, never to a dead resolver.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -69,7 +68,6 @@ void main() {
       miruro: MiruroResolver(client: client, anilist: anilist),
       anisuge: AnisugeResolver(client: client, anilist: anilist),
       anikage: AnikageResolver(client: client, anilist: anilist),
-      anipm: AniPmResolver(client: client, anilist: anilist),
       animesama: AnimeSamaResolver(client: client, anilist: anilist),
       debrid: DebridService(),
       oauth: OAuthService(),
@@ -79,7 +77,7 @@ void main() {
     );
   }
 
-  test('server=AniPM routes to AniPM (others untouched)', () async {
+  test('server=AniPM (removed) falls through to Miruro (0.2.26)', () async {
     final AppServices svc = await services();
     final SettingsStore store = await SettingsStore.load();
     final stream = await svc.resolveEpisode(
@@ -90,8 +88,9 @@ void main() {
       server: 'AniPM',
     );
     expect(stream, isNull);
-    expect(svc.anipm.lastError, isNotNull);
-    expect(svc.miruro.lastError, isNull);
+    // No AniPM resolver exists any more — the stale name must not
+    // route to any other source; the Miruro chain is entered.
+    expect(svc.miruro.lastError, isNotNull);
     expect(svc.anisuge.lastError, isNull);
     expect(svc.anikage.lastError, isNull);
     expect(svc.animesama.lastError, isNull);
@@ -110,7 +109,6 @@ void main() {
     );
     expect(stream, isNull);
     expect(svc.animesama.lastError, isNotNull);
-    expect(svc.anipm.lastError, isNull);
     expect(svc.anisuge.lastError, isNull);
     expect(svc.anikage.lastError, isNull);
     expect(svc.miruro.lastError, isNull);
@@ -129,13 +127,12 @@ void main() {
     );
     expect(stream, isNull);
     expect(svc.miruro.lastError, isNotNull);
-    expect(svc.anipm.lastError, isNull);
   });
 
   test('no server arg honors store.preferredServer', () async {
     final AppServices svc = await services();
     final SettingsStore store = await SettingsStore.load();
-    await store.setPreferredServer('AniPM');
+    await store.setPreferredServer('Anime-Sama');
     final stream = await svc.resolveEpisode(
       anime: jjk,
       episode: 1,
@@ -143,7 +140,7 @@ void main() {
       store: store,
     );
     expect(stream, isNull);
-    expect(svc.anipm.lastError, isNotNull);
+    expect(svc.animesama.lastError, isNotNull);
     expect(svc.miruro.lastError, isNull);
     await store.setPreferredServer('Miruro');
   });
@@ -160,7 +157,6 @@ void main() {
     );
     expect(stream, isNull);
     expect(svc.anisuge.lastError, isNotNull);
-    expect(svc.anipm.lastError, isNull);
     expect(svc.anikage.lastError, isNull);
     expect(svc.miruro.lastError, isNull);
   });
@@ -177,13 +173,12 @@ void main() {
     );
     expect(stream, isNull);
     expect(svc.anikage.lastError, isNotNull);
-    expect(svc.anipm.lastError, isNull);
     expect(svc.anisuge.lastError, isNull);
     expect(svc.miruro.lastError, isNull);
   });
 
   test(
-      'default sources are Miruro, AniKoto, AniSuge, AniKage, AniPM, Anime-Sama — no AnimeKai / ReAnime / AniZone',
+      'default sources are Miruro, AniKoto, AniSuge, AniKage, Anime-Sama — no AnimeKai / ReAnime / AniZone / AniPM',
       () {
     final List<String> names =
         defaultSources().map((ProviderSource s) => s.name).toList();
@@ -192,13 +187,13 @@ void main() {
       'AniKoto',
       'AniSuge',
       'AniKage',
-      'AniPM',
       'Anime-Sama',
     ]);
     expect(names, isNot(contains('AllAnime')));
     expect(names, isNot(contains('ReAnime')));
     expect(names, isNot(contains('AniZone')));
     expect(names, isNot(contains('AnimeKai')));
+    expect(names, isNot(contains('AniPM')));
   });
 
   test('default sources include Anime-Sama, enabled, French (0.2.25)', () {
@@ -211,13 +206,13 @@ void main() {
     expect(kServerLanguages['Anime-Sama'], <String>['French']);
   });
 
-  test('default sources include AniPM, enabled (0.2.25)', () {
+  test('AniPM is gone everywhere (0.2.26)', () {
     final List<ProviderSource> sources = defaultSources();
-    final ProviderSource anipm = sources.firstWhere(
-      (ProviderSource s) => s.name == 'AniPM',
+    expect(
+      sources.any((ProviderSource s) => s.name == 'AniPM'),
+      isFalse,
     );
-    expect(anipm.enabled, isTrue);
-    expect(kServerLanguages['AniPM'], <String>['English']);
+    expect(kServerLanguages.containsKey('AniPM'), isFalse);
     expect(kServerLanguages.containsKey('AnimeKai'), isFalse);
   });
 

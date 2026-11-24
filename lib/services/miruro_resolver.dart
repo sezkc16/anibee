@@ -10,18 +10,9 @@ import 'package:pointycastle/export.dart';
 import '../models.dart';
 import 'anilist_service.dart';
 
-/// How a resolved stream plays.
-/// - [mpv]: a real media URL for the mpv player (all sources
-///   except AniPM).
-/// - [webEmbed]: an embed page URL — the site's own player inside
-///   a fullscreen WebView (AniPM, 0.2.25: the settlar embed has no
-///   plain stream URL, so mpv can never play it). A webEmbed
-///   stream carries NO mpv subtitles, variants or Cast support —
-///   the embed plays with the site's own controls.
-enum StreamPlayback { mpv, webEmbed }
-
 /// A resolved playable stream: one best URL (or quality variants),
-/// playback headers, and subtitle tracks.
+/// playback headers, and subtitle tracks. Every source returns a
+/// real media URL for the mpv player.
 class ResolvedStream {
   const ResolvedStream({
     required this.url,
@@ -30,7 +21,6 @@ class ResolvedStream {
     this.headers = const <String, String>{},
     this.variants = const <StreamVariant>[],
     this.subtitles = const <SubtitleInfo>[],
-    this.playback = StreamPlayback.mpv,
   });
 
   /// Best (highest-quality) playable URL.
@@ -39,14 +29,9 @@ class ResolvedStream {
   /// Human label, e.g. "Miruro MegaPlay 1080p" / "TorBox Cached 1080p".
   final String label;
 
-  /// 'Miruro' | 'Anikoto' | 'AniSuge' | 'AniKage' | 'AniPM' |
+  /// 'Miruro' | 'Anikoto' | 'AniSuge' | 'AniKage' |
   /// 'Anime-Sama' | 'TorBox' | 'Real-Debrid'.
   final String source;
-
-  /// How this stream plays — mpv (default) or a WebView embed
-  /// (AniPM only, 0.2.25). Callers MUST branch on this: a webEmbed
-  /// URL is an HTML page, never a media URL.
-  final StreamPlayback playback;
 
   /// Headers the player must send (Referer / Origin / UA).
   final Map<String, String> headers;
