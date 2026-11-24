@@ -626,6 +626,26 @@ class SettingsStore extends ChangeNotifier {
             ),
           );
         }
+        // 0.2.24 migration: AniSuge (anisuge.tv) and AniKage
+        // (anikage.cc) join as 4th and 5th sources.
+        if (!sources.any((ProviderSource s) => s.name == 'AniSuge')) {
+          sources.add(
+            const ProviderSource(
+              name: 'AniSuge',
+              tagline: '1080p • Sub/Dub',
+              enabled: true,
+            ),
+          );
+        }
+        if (!sources.any((ProviderSource s) => s.name == 'AniKage')) {
+          sources.add(
+            const ProviderSource(
+              name: 'AniKage',
+              tagline: '1080p • Sub/Dub',
+              enabled: true,
+            ),
+          );
+        }
         if (preferredServer == 'AllAnime' ||
             preferredServer == 'ReAnime' ||
             preferredServer == 'AniZone') {

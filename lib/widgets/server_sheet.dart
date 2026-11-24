@@ -64,6 +64,8 @@ const Map<String, List<String>> kServerLanguages = <String, List<String>>{
   'Miruro': <String>['English'],
   'AniKoto': <String>['English', 'Japanese'],
   'AnimeKai': <String>['English'],
+  'AniSuge': <String>['English'],
+  'AniKage': <String>['English'],
 };
 
 const List<String> kSheetLanguages = <String>[

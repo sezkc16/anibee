@@ -4,6 +4,8 @@ import 'airing_notifications.dart';
 import 'airing_service.dart';
 import 'anilist_service.dart';
 import 'animekai_resolver.dart';
+import 'anikage_resolver.dart';
+import 'anisuge_resolver.dart';
 import 'debrid_service.dart';
 import 'download_service.dart';
 import 'miruro_resolver.dart';
@@ -17,13 +19,17 @@ class AppServices {
     required this.anilist,
     required this.miruro,
     AnimeKaiResolver? animekai,
+    AnisugeResolver? anisuge,
+    AnikageResolver? anikage,
     required this.debrid,
     required this.oauth,
     required this.downloads,
     required this.airing,
     required this.airingNotifications,
     this.configService,
-  })  : animekai = animekai ?? AnimeKaiResolver(anilist: anilist);
+  })  : animekai = animekai ?? AnimeKaiResolver(anilist: anilist),
+        anisuge = anisuge ?? AnisugeResolver(anilist: anilist),
+        anikage = anikage ?? AnikageResolver(anilist: anilist);
 
   factory AppServices.create({ProviderConfigService? configService}) {
     final AniListService anilist = AniListService();
@@ -31,6 +37,8 @@ class AppServices {
       anilist: anilist,
       miruro: MiruroResolver(anilist: anilist),
       animekai: AnimeKaiResolver(anilist: anilist),
+      anisuge: AnisugeResolver(anilist: anilist),
+      anikage: AnikageResolver(anilist: anilist),
       debrid: DebridService(),
       oauth: OAuthService(),
       downloads: DownloadService(),
@@ -48,6 +56,15 @@ class AppServices {
   /// megavid embed -> signed HLS). Replaces ReAnime (removed —
   /// flixcloud token API 410s) and AniZone (removed).
   final AnimeKaiResolver animekai;
+
+  /// AniSuge (0.2.24): anisuge.tv, AnimeWave clone — same backend
+  /// as AniKoto, shared chain in MiruroResolver.
+  final AnisugeResolver anisuge;
+
+  /// AniKage (0.2.24): anikage.cc SvelteKit JSON API (browse ->
+  /// episodes -> servers -> sources -> megaplay embed).
+  final AnikageResolver anikage;
+
   final DebridService debrid;
   final OAuthService oauth;
 
@@ -75,14 +92,17 @@ class AppServices {
   /// Resolve a playable stream for an episode.
   /// [debrid] is null (source resolvers) or 'torbox' / 'realdebrid'.
   /// [server] is the chosen source ('Miruro' | 'AniKoto' |
-  /// 'AnimeKai') — 0.2.11 actually routes to it now:
+  /// 'AnimeKai' | 'AniSuge' | 'AniKage') — 0.2.11 actually routes
+  /// to it now:
   /// Miruro = justanime chain, AniKoto = anikoto.cz chain, AnimeKai
-  /// = the animekai.ro chain (0.2.23). Previously every non-debrid
-  /// resolve silently went to Miruro and `preferredServer` was
-  /// display-only. When the chosen server fails and the user's
-  /// fallback setting is on, the other Miruro-family server is
-  /// tried once. Returns null when nothing resolved —
-  /// [miruro.lastError] / [animekai.lastError] / the debrid path
+  /// = the animekai.ro chain (0.2.23), AniSuge = the anisuge.tv
+  /// chain (0.2.24), AniKage = the anikage.cc chain (0.2.24).
+  /// Previously every non-debrid resolve silently went to Miruro
+  /// and `preferredServer` was display-only. When the chosen
+  /// server fails and the user's fallback setting is on, the other
+  /// Miruro-family server is tried once. Returns null when nothing
+  /// resolved — [miruro.lastError] / [animekai.lastError] /
+  /// [anisuge.lastError] / [anikage.lastError] / the debrid path
   /// carries the reason.
   Future<ResolvedStream?> resolveEpisode({
     required Anime anime,
@@ -117,6 +137,20 @@ class AppServices {
     final String chosen = server ?? store.preferredServer;
     if (chosen == 'AnimeKai') {
       return animekai.resolve(
+        anime: anime,
+        episodeNumber: episode,
+        subDub: subDub,
+      );
+    }
+    if (chosen == 'AniSuge') {
+      return anisuge.resolve(
+        anime: anime,
+        episodeNumber: episode,
+        subDub: subDub,
+      );
+    }
+    if (chosen == 'AniKage') {
+      return anikage.resolve(
         anime: anime,
         episodeNumber: episode,
         subDub: subDub,

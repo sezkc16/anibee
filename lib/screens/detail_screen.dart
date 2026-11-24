@@ -364,6 +364,8 @@ class _DetailScreenState extends State<DetailScreen> {
       if (!mounted) return;
       await _showResolveError(
         _services.animekai.lastError ??
+            _services.anisuge.lastError ??
+            _services.anikage.lastError ??
             _services.miruro.lastError ??
             'No sources found for episode ${initial.number}. '
                 'Check your connection or try another server.',
