@@ -15,6 +15,7 @@ import '../player/subtitle_style.dart';
 import '../player/trailer_player.dart';
 import '../services/anilist_service.dart';
 import '../services/aniskip_service.dart';
+import '../services/cast_relay.dart';
 import '../services/cast_service.dart';
 import '../services/download_service.dart';
 import '../services/miruro_resolver.dart';
@@ -274,6 +275,11 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
   // backend, created lazily on the first Cast tap — the injected
   // widget service wins in tests (mock).
   CastService? _castService;
+  // 0.2.21: the local relay server, created lazily when a
+  // Referer-gated stream is cast — the TV loads from the phone
+  // instead of the CDN (see cast_relay.dart). Null when no relay
+  // is running.
+  CastRelay? _castRelay;
   bool _casting = false;
   bool _castConnecting = false;
   String? _castDeviceName;
@@ -400,6 +406,11 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
 
   @visibleForTesting
   bool get castConnectingForTest => _castConnecting;
+
+  /// Test seam (0.2.21): whether the local relay is serving right
+  /// now — true while a relayed stream is being cast to the TV.
+  @visibleForTesting
+  bool get castRelayRunningForTest => _castRelay?.isRunning ?? false;
 
   /// Test seam: whether the controls overlay is currently visible.
   @visibleForTesting
@@ -565,6 +576,10 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
     } else {
       _saveProgress();
     }
+    // 0.2.21: never leave the relay server running after the
+    // player closes (it only ever runs while casting, but stop it
+    // unconditionally — cheap and leak-proof).
+    unawaited(_stopCastRelay());
     _teardownPip();
     unawaited(widget.trailer.backToInline());
     SystemChrome.setPreferredOrientations(<DeviceOrientation>[
@@ -1590,10 +1605,15 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
   // diagnostic goes to the log only (see cast_service.dart).
   //
   // Honest limits (user was told): subtitles do NOT show on the TV
-  // (Flutter overlay); the TV fetches the URL directly, so expiring
-  // signed links / referer-gated sources may fail on the TV while
-  // playing fine on the phone; local downloads (file://) cannot be
-  // cast. A failed TV load stays local and shows one short line.
+  // (Flutter overlay); local downloads (file://) cannot be cast.
+  // 0.2.21: Referer-gated HLS (Miruro/AniKoto — the CDN 403s the
+  // TV's direct fetch) goes through the local relay
+  // (cast_relay.dart): the phone fetches with the Referer and
+  // re-serves the stream to the TV. The relay only runs while a
+  // cast is active and the app is in the foreground — background
+  // the app and the TV stalls; the load-verdict / idle-error
+  // handling ends the cast cleanly if it persists. A failed TV
+  // load stays local and shows one short line.
 
   /// One short line the user sees when a Cast device cannot be
   /// reached (connection timeout, device gone).
@@ -1846,6 +1866,37 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
     }
   }
 
+  /// Pick the URL the TV should load for [url]: the local relay
+  /// when the host is Referer-gated (the TV cannot send a Referer
+  /// — see cast_relay.dart), the original URL otherwise. Starting
+  /// the relay can fail (no Wi-Fi LAN IP, bind failure) — then the
+  /// direct URL is used and the existing load-verdict path reports
+  /// the failure; never a crash.
+  Future<String> _castUrlFor(String url) async {
+    if (!needsCastRelay(url)) {
+      await _stopCastRelay();
+      return url;
+    }
+    final CastRelay relay = _castRelay ??= CastRelay();
+    final String? relayUrl = await relay.start(sourceUrl: url);
+    if (relayUrl == null) {
+      debugPrint('Anibee Cast relay unavailable — casting direct');
+      _castRelay = null;
+      return url;
+    }
+    return relayUrl;
+  }
+
+  /// Stop the relay server (cast end / load failure / dispose).
+  /// Never throws.
+  Future<void> _stopCastRelay() async {
+    final CastRelay? relay = _castRelay;
+    _castRelay = null;
+    if (relay != null) {
+      await relay.stop();
+    }
+  }
+
   /// Load the current episode's stream on the TV at the current
   /// local position, pause the local player and flip the screen
   /// into remote mode. Returns false when the TV load fails (the
@@ -1856,9 +1907,10 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
     if (url == null || !isCastableUrl(url)) return false;
     final Duration position = _player.state.position;
     _castEndHandled = false;
+    final String castUrl = await _castUrlFor(url);
     try {
       await _cast.loadMedia(
-        url: url,
+        url: castUrl,
         position: position,
         title: widget.anime.title,
         subtitle: 'Episode ${_currentEpisode.number}',
@@ -1866,6 +1918,7 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
       );
     } on CastException catch (e) {
       debugPrint('Anibee Cast load failed: $e');
+      await _stopCastRelay();
       return false;
     }
     _subscribeCastStreams();
@@ -1878,7 +1931,12 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
         debugPrint('Anibee Cast local pause failed: $e');
       }),
     );
-    if (!mounted) return false;
+    if (!mounted) {
+      // Screen gone mid-load: the TV session (if any) is the
+      // caller's problem, but the relay server must not leak.
+      await _stopCastRelay();
+      return false;
+    }
     setState(() {
       _casting = true;
       _castDeviceName = _cast.connectedDeviceName;
@@ -1899,9 +1957,10 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
       await _endCastAndResumeLocal();
       return;
     }
+    final String castUrl = await _castUrlFor(url);
     try {
       await _cast.loadMedia(
-        url: url,
+        url: castUrl,
         position: _castState.position,
         title: widget.anime.title,
         subtitle: 'Episode ${_currentEpisode.number}',
@@ -1960,6 +2019,9 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
     if (!mounted) return;
     _saveCastProgress(tvPosition);
     await _cast.disconnect();
+    // The TV session is over — stop the relay server (the TV
+    // stops fetching the moment the session ends).
+    await _stopCastRelay();
     if (!mounted) return;
     setState(() {
       _casting = false;

@@ -256,6 +256,74 @@ void main() {
     await flushTimers(tester);
   });
 
+  testWidgets('gated HLS loads through the relay URL, relay stops on end',
+      (WidgetTester tester) async {
+    // 0.2.21: a nexabloom host is Referer-gated — the TV cannot
+    // fetch it directly, so the player must hand loadMedia a relay
+    // URL (http://<phone-LAN-IP>:<port>/r/<token>/master.m3u8),
+    // never the CDN URL.
+    await pumpPlayer(
+      tester,
+      url: 'https://fetch.nexabloom.top/anime/test/index-f1-v1-a1.m3u8',
+    );
+    fake.devicesValue = <CastDevice>[
+      const CastDevice(id: 'tv-1', name: 'Living Room TV'),
+    ];
+    await tester.tap(find.byTooltip('Cast to TV'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.text('Living Room TV'));
+    await settleRealTime(tester);
+    await tester.pump();
+    await settleRealTime(tester);
+    await tester.pump();
+    expect(playerState(tester).castingForTest, isTrue);
+    expect(playerState(tester).castRelayRunningForTest, isTrue);
+    expect(fake.loadCalls, hasLength(1));
+    final String loadedUrl = fake.loadCalls.first.url;
+    expect(loadedUrl, startsWith('http://'));
+    expect(loadedUrl, contains('/r/'));
+    expect(loadedUrl, endsWith('/master.m3u8'));
+    expect(loadedUrl, isNot(contains('nexabloom')));
+    // Dismiss the "Playing on TV" banner, then stop casting —
+    // the relay server must stop with the cast.
+    await tester.tap(find.text('Playing on TV'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Stop casting — Living Room TV'));
+    await settleRealTime(tester);
+    await tester.pump();
+    await settleRealTime(tester);
+    await tester.pump();
+    expect(playerState(tester).castingForTest, isFalse);
+    expect(playerState(tester).castRelayRunningForTest, isFalse);
+    expect(fake.disconnectCalls, 1);
+    await flushTimers(tester);
+  });
+
+  testWidgets('non-gated HLS loads directly, no relay',
+      (WidgetTester tester) async {
+    await pumpPlayer(tester, url: 'https://cdn.example.com/ep1.m3u8');
+    fake.devicesValue = <CastDevice>[
+      const CastDevice(id: 'tv-1', name: 'Living Room TV'),
+    ];
+    await tester.tap(find.byTooltip('Cast to TV'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.text('Living Room TV'));
+    await settleRealTime(tester);
+    await tester.pump();
+    await settleRealTime(tester);
+    await tester.pump();
+    expect(playerState(tester).castingForTest, isTrue);
+    expect(playerState(tester).castRelayRunningForTest, isFalse);
+    expect(fake.loadCalls, hasLength(1));
+    expect(
+      fake.loadCalls.first.url,
+      'https://cdn.example.com/ep1.m3u8',
+    );
+    await flushTimers(tester);
+  });
+
   testWidgets('disconnect resumes local at the TV position and records it',
       (WidgetTester tester) async {
     await pumpPlayer(tester);

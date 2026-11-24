@@ -19,10 +19,13 @@ import 'package:flutter_chrome_cast/flutter_chrome_cast.dart';
 ///   own Flutter overlay, not carried in the stream. The default
 ///   receiver gets no subtitle tracks from us.
 /// - The TV fetches the stream URL directly, so expiring signed
-///   links and referer-gated sources may fail on the TV while
-///   playing fine on the phone. The Cast SDK gives the sender no
-///   way to attach custom HTTP headers with the default receiver
-///   (only a custom receiver could read them from `customData`).
+///   links may fail on the TV while playing fine on the phone.
+///   Referer-gated HLS (Miruro/AniKoto) is relayed through the
+///   phone instead (see cast_relay.dart, 0.2.21) — the TV loads
+///   the relay URL and never talks to the CDN directly. The Cast
+///   SDK gives the sender no way to attach custom HTTP headers
+///   with the default receiver (only a custom receiver could read
+///   them from `customData`).
 ///   A failed TV load is caught here (see [GoogleCastService]
 ///   — the iOS `loadMedia` channel call is fire-and-forget) and
 ///   surfaces as one short line, never a raw error.
