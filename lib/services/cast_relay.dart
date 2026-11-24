@@ -82,6 +82,46 @@ bool needsCastRelay(String url) {
 /// on every host in the chain. Pure — unit-tested.
 String castRelayRefererForUrl(String url) => kCastRelayReferer;
 
+/// One candidate LAN address: the interface it came from + the
+/// IPv4 address. `NetworkInterface.list` itself cannot be faked in
+/// tests, so selection over these pairs is the pure, tested part.
+typedef LanIpCandidate = ({String interfaceName, String address});
+
+/// Pick the phone's LAN address from [candidates]: the Wi-Fi
+/// interface (`en0` on iOS) first when it has a private IPv4
+/// address — a VPN utun (10.x) or cellular pdp_ip0 must never
+/// outrank Wi-Fi (0.2.22: the old score-only order let a 10.x
+/// utun beat a 172.16.x en0, so the relay URL pointed at an
+/// address the TV cannot reach). Then the existing range score
+/// order. Pure — unit-tested.
+({String interfaceName, String address})? selectLanIp(
+  List<LanIpCandidate> candidates,
+) {
+  final List<LanIpCandidate> wifi = candidates
+      .where(
+        (LanIpCandidate c) =>
+            c.interfaceName == 'en0' && _isPrivateIpv4(c.address),
+      )
+      .toList();
+  if (wifi.isNotEmpty) {
+    wifi.sort(
+      (LanIpCandidate a, LanIpCandidate b) =>
+          lanIpScore(a.address).compareTo(lanIpScore(b.address)),
+    );
+    return wifi.first;
+  }
+  final List<LanIpCandidate> rest = List<LanIpCandidate>.of(candidates)
+    ..sort(
+      (LanIpCandidate a, LanIpCandidate b) =>
+          lanIpScore(a.address).compareTo(lanIpScore(b.address)),
+    );
+  return rest.isEmpty ? null : rest.first;
+}
+
+/// True for a private LAN IPv4 address (192.168/16, 10/8,
+/// 172.16/12) — the ranges a home Wi-Fi hands out.
+bool _isPrivateIpv4(String ip) => lanIpScore(ip) <= 2;
+
 /// Score for picking the phone's LAN address: the TV is on the
 /// same Wi-Fi, so prefer private LAN ranges (192.168/16, then
 /// 10/8, then 172.16/12); anything else usable, link-local last.
@@ -104,25 +144,30 @@ int lanIpScore(String ip) {
 /// or null when there is none (cellular-only, no Wi-Fi). Uses
 /// `dart:io` only — no extra dependency for one call.
 Future<String?> findLanIp() async {
+  final LanIpCandidate? picked = await findLanIpDetailed();
+  return picked?.address;
+}
+
+/// [findLanIp] plus the interface the address came from — the
+/// relay records both for its diagnostics (0.2.22).
+Future<LanIpCandidate?> findLanIpDetailed() async {
   try {
     final List<NetworkInterface> interfaces =
         await NetworkInterface.list(
       includeLoopback: false,
       type: InternetAddressType.IPv4,
     );
-    final List<String> candidates = <String>[];
+    final List<LanIpCandidate> candidates = <LanIpCandidate>[];
     for (final NetworkInterface interface in interfaces) {
       for (final InternetAddress address in interface.addresses) {
         if (address.type == InternetAddressType.IPv4) {
-          candidates.add(address.address);
+          candidates.add(
+            (interfaceName: interface.name, address: address.address),
+          );
         }
       }
     }
-    if (candidates.isEmpty) return null;
-    candidates.sort(
-      (String a, String b) => lanIpScore(a).compareTo(lanIpScore(b)),
-    );
-    return candidates.first;
+    return selectLanIp(candidates);
   } catch (e) {
     debugPrint('Anibee Cast relay: LAN IP lookup failed: $e');
     return null;
@@ -196,6 +241,54 @@ String? _decodeTarget(String token) {
   }
 }
 
+/// What the relay observed, for the Cast diagnostics (0.2.22).
+/// The player reads this after a failed load and shows one short
+/// line from it — the failure is diagnosed from these
+/// observations, never guessed. The record describes the LAST
+/// session and survives `stop()` (a stopped relay keeps its
+/// record until the next `start()`); a fresh `start()` resets the
+/// per-session fields.
+class CastRelayDiagnostics {
+  const CastRelayDiagnostics({
+    required this.running,
+    required this.relayUrl,
+    required this.lanIp,
+    required this.lanInterface,
+    required this.requestCount,
+    required this.lastUpstreamStatus,
+    required this.lastUpstreamError,
+    required this.startFailureReason,
+  });
+
+  /// True while the server is up.
+  final bool running;
+
+  /// The relay master URL handed to the TV, null when not running.
+  final String? relayUrl;
+
+  /// The LAN IP the relay URL points at (last session).
+  final String? lanIp;
+
+  /// The interface the LAN IP came from — `en0` (Wi-Fi), `utun*`
+  /// (VPN), `pdp_ip0` (cellular), `test` for a lanIpOverride.
+  final String? lanInterface;
+
+  /// Requests that reached the server (any path, any token) — a
+  /// count above zero proves the TV can reach the phone.
+  final int requestCount;
+
+  /// Status of the most recent upstream (CDN) fetch, null when
+  /// nothing was fetched yet.
+  final int? lastUpstreamStatus;
+
+  /// Short reason the most recent upstream fetch failed, null
+  /// when the last fetch succeeded (or nothing was fetched).
+  final String? lastUpstreamError;
+
+  /// Why the last `start()` failed, null when it started fine.
+  final String? startFailureReason;
+}
+
 /// One relay session: an [HttpServer] bound to an ephemeral port on
 /// the LAN, serving one source HLS (master + variants + segments +
 /// keys) with the Referer the CDN gates on.
@@ -208,9 +301,13 @@ String? _decodeTarget(String token) {
 class CastRelay {
   /// [lanIpOverride] is a test seam only (127.0.0.1 in tests) — the
   /// player passes nothing and the real LAN IP is detected.
-  CastRelay({this.lanIpOverride});
+  /// [lanIpLookup] is a test seam only (a null result forces the
+  /// no-LAN-IP failure); production uses [findLanIpDetailed].
+  CastRelay({this.lanIpOverride, Future<LanIpCandidate?> Function()? lanIpLookup})
+      : _lanIpLookup = lanIpLookup ?? findLanIpDetailed;
 
   final String? lanIpOverride;
+  final Future<LanIpCandidate?> Function() _lanIpLookup;
 
   HttpServer? _server;
   HttpClient? _client;
@@ -218,8 +315,51 @@ class CastRelay {
   String _referer = kCastRelayReferer;
   String _token = '';
 
+  /// The LAN IP the (last) session binds its URL to, and the
+  /// interface it came from. Kept after `stop()` — they are part
+  /// of the diagnostics record (see [snapshot]).
+  String? _lanIp;
+  String? _lanInterface;
+
+  /// Diagnostics for the current/last session (0.2.22).
+  int _requestCount = 0;
+  int? _lastUpstreamStatus;
+  String? _lastUpstreamError;
+  String? _startFailureReason;
+
   /// True while the server is up.
   bool get isRunning => _server != null;
+
+  /// The LAN IP the relay URL points at (last session).
+  String? get lanIp => _lanIp;
+
+  /// The interface the LAN IP came from (last session).
+  String? get lanInterface => _lanInterface;
+
+  /// Requests that reached the server this session.
+  int get requestCount => _requestCount;
+
+  /// Status of the most recent upstream fetch, null when nothing
+  /// was fetched yet.
+  int? get lastUpstreamStatus => _lastUpstreamStatus;
+
+  /// Short reason the most recent upstream fetch failed.
+  String? get lastUpstreamError => _lastUpstreamError;
+
+  /// Why the last `start()` failed, null when it started fine.
+  String? get startFailureReason => _startFailureReason;
+
+  /// The relay's observed state, for the Cast diagnostics.
+  CastRelayDiagnostics snapshot() => CastRelayDiagnostics(
+        running: isRunning,
+        relayUrl: relayUrl,
+        lanIp: _lanIp,
+        lanInterface: _lanInterface,
+        requestCount: _requestCount,
+        lastUpstreamStatus: _lastUpstreamStatus,
+        lastUpstreamError: _lastUpstreamError,
+        startFailureReason: _startFailureReason,
+      );
 
   /// The relay master-playlist URL to hand to the TV, or null when
   /// the relay is not running.
@@ -235,21 +375,35 @@ class CastRelay {
     return 'http://$host:$port/r/$_token';
   }
 
-  String? _lanIp;
-
   /// Start serving [sourceUrl] (the CDN master playlist URL). The
   /// TV loads the returned URL. Returns null when the relay cannot
   /// start — no LAN IP, bind failure — and the caller falls back to
   /// the direct URL (the existing load-verdict path reports the
-  /// failure; never a crash).
+  /// failure; never a crash). A failed start records the reason
+  /// ([startFailureReason]) for the Cast diagnostics; a new session
+  /// resets the per-session observations.
   Future<String?> start({
     required String sourceUrl,
     String referer = kCastRelayReferer,
   }) async {
     if (_server != null && _sourceUrl == sourceUrl) return relayUrl;
     await stop();
-    final String? lanIp = lanIpOverride ?? await findLanIp();
+    _requestCount = 0;
+    _lastUpstreamStatus = null;
+    _lastUpstreamError = null;
+    _startFailureReason = null;
+    final String? lanIp;
+    final String? lanInterface;
+    if (lanIpOverride != null) {
+      lanIp = lanIpOverride;
+      lanInterface = 'test';
+    } else {
+      final LanIpCandidate? picked = await _lanIpLookup();
+      lanIp = picked?.address;
+      lanInterface = picked?.interfaceName;
+    }
     if (lanIp == null) {
+      _startFailureReason = 'no Wi-Fi (no LAN IP)';
       debugPrint('Anibee Cast relay: no LAN IP — cannot start');
       return null;
     }
@@ -259,11 +413,13 @@ class CastRelay {
     try {
       server = await HttpServer.bind(InternetAddress.anyIPv4, 0);
     } catch (e) {
+      _startFailureReason = 'could not bind local server';
       debugPrint('Anibee Cast relay: bind failed: $e');
       client.close(force: true);
       return null;
     }
     _lanIp = lanIp;
+    _lanInterface = lanInterface;
     _client = client;
     _server = server;
     _sourceUrl = sourceUrl;
@@ -278,13 +434,15 @@ class CastRelay {
   }
 
   /// Stop serving. Safe to call when not running; never throws.
+  /// The diagnostics record is KEPT (see [snapshot]) — the player
+  /// reads it after a failed load — only the server, client,
+  /// source and token are cleared.
   Future<void> stop() async {
     final HttpServer? server = _server;
     final HttpClient? client = _client;
     _server = null;
     _client = null;
     _sourceUrl = null;
-    _lanIp = null;
     _token = '';
     if (server != null) {
       try {
@@ -304,6 +462,11 @@ class CastRelay {
   }
 
   Future<void> _handle(HttpRequest request) async {
+    // Every request that reaches the server counts (0.2.22) — even
+    // a wrong-token / wrong-method one proves the TV can reach the
+    // phone. The count is the evidence for "TV never reached the
+    // phone" vs "relay reached, upstream failed".
+    _requestCount++;
     final HttpResponse response = request.response;
     // CORS on EVERY relay response — the TV's player fetches
     // playlists/segments cross-origin.
@@ -484,15 +647,31 @@ class CastRelay {
   }
 
   /// One upstream GET with the Referer the CDN gates on. Range is
-  /// forwarded when the TV asks for one (seeks / resumes).
+  /// forwarded when the TV asks for one (seeks / resumes). Records
+  /// the outcome for the diagnostics (0.2.22): the status of the
+  /// most recent fetch, or a short error reason when the fetch
+  /// itself fails (type only, never the URL).
   Future<HttpClientResponse> _fetchUpstream(
     Uri target, {
     String? range,
   }) async {
     final HttpClient client = _client!;
-    final HttpClientRequest req = await client.getUrl(target);
-    req.headers.set('Referer', _referer);
-    if (range != null) req.headers.set('range', range);
-    return req.close();
+    try {
+      final HttpClientRequest req = await client.getUrl(target);
+      req.headers.set('Referer', _referer);
+      if (range != null) req.headers.set('range', range);
+      final HttpClientResponse res = await req.close();
+      _lastUpstreamStatus = res.statusCode;
+      _lastUpstreamError = null;
+      return res;
+    } catch (e) {
+      _lastUpstreamStatus = null;
+      _lastUpstreamError = e is TimeoutException
+          ? 'timeout'
+          : e is SocketException
+          ? 'connection failed'
+          : 'fetch failed';
+      rethrow;
+    }
   }
 }

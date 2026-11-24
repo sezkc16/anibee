@@ -127,6 +127,7 @@ class FullPlayerScreen extends StatefulWidget {
     this.aniSkip,
     this.downloads,
     this.castService,
+    this.castRelay,
   });
 
   final TrailerPlayer trailer;
@@ -182,6 +183,11 @@ class FullPlayerScreen extends StatefulWidget {
   /// tap" — never at construction, so a missing plugin can never
   /// break player startup.
   final CastService? castService;
+
+  /// Local Cast relay (0.2.22). Injected for tests; null in the app
+  /// means "create the real CastRelay lazily when a Referer-gated
+  /// stream is cast" — same pattern as [castService].
+  final CastRelay? castRelay;
 
   @override
   State<FullPlayerScreen> createState() => _FullPlayerScreenState();
@@ -280,6 +286,23 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
   // instead of the CDN (see cast_relay.dart). Null when no relay
   // is running.
   CastRelay? _castRelay;
+
+  /// True when the last cast URL went through the relay (0.2.22)
+  /// — the load-failure diagnostic line only applies then; a
+  /// direct cast has no relay to diagnose. Set by [_castUrlFor]
+  /// and by [_onCastButton] (which starts the relay before the
+  /// picker opens), so it is never stale when the picker reads it.
+  bool _lastCastUsedRelay = false;
+
+  /// The relay to use: the injected one in tests, else the lazily
+  /// created real one. The instance is RETAINED after the server
+  /// stops (0.2.22) — its diagnostics record is what the player
+  /// reads after a failed load.
+  CastRelay get _relayInstance =>
+      widget.castRelay ?? (_castRelay ??= CastRelay());
+
+  /// The relay instance if one exists, without creating it.
+  CastRelay? get _currentRelay => widget.castRelay ?? _castRelay;
   bool _casting = false;
   bool _castConnecting = false;
   String? _castDeviceName;
@@ -410,7 +433,14 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
   /// Test seam (0.2.21): whether the local relay is serving right
   /// now — true while a relayed stream is being cast to the TV.
   @visibleForTesting
-  bool get castRelayRunningForTest => _castRelay?.isRunning ?? false;
+  bool get castRelayRunningForTest => _currentRelay?.isRunning ?? false;
+
+  /// Test seam (0.2.22): the relay diagnostics for the last cast
+  /// attempt — the relay URL, LAN IP/interface, request count and
+  /// last upstream status, as the player shows them.
+  @visibleForTesting
+  CastRelayDiagnostics? get castRelayDiagnosticsForTest =>
+      _currentRelay?.snapshot();
 
   /// Test seam: whether the controls overlay is currently visible.
   @visibleForTesting
@@ -1663,6 +1693,16 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
       _snack(_castNotCastableMessage);
       return;
     }
+    // 0.2.22: start the relay BEFORE the picker opens when this
+    // stream needs it, so the picker can show the live relay URL
+    // (the user can open it in another phone's browser to test
+    // reachability) — or the reason it did not start. Starting is
+    // fast (LAN IP + bind, no network fetch yet); picking a device
+    // reuses the running relay.
+    _lastCastUsedRelay = needsCastRelay(url);
+    if (_lastCastUsedRelay) {
+      await _castUrlFor(url);
+    }
     _showCastPicker();
   }
 
@@ -1694,6 +1734,10 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
       context: context,
       backgroundColor: Colors.transparent,
       builder: (BuildContext context) {
+        // 0.2.22: the relay URL (or its start-failure reason) for
+        // this stream — the relay was started before the picker
+        // opened, so this is final, not a guess.
+        final String? relayLine = _castPickerRelayLine();
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
@@ -1744,6 +1788,24 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                               ),
                             ),
                             const SizedBox(height: 16),
+                            // 0.2.22: relay diagnostics line — the
+                            // live relay URL (open it in another
+                            // phone's browser to test reachability)
+                            // or the reason the relay did not start.
+                            // Only for Referer-gated streams; direct
+                            // casts show nothing here.
+                            if (relayLine != null) ...<Widget>[
+                              Text(
+                                relayLine,
+                                style: const TextStyle(
+                                  color: Colors.white54,
+                                  fontSize: 12,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 12),
+                            ],
                             StreamBuilder<List<CastDevice>>(
                               stream: cast.devices,
                               initialData: cast.currentDevices,
@@ -1837,6 +1899,14 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
       },
     );
     unawaited(cast.stopDiscovery());
+    // Picker dismissed without a pick: stop the relay started for
+    // it — unless a cast is starting. The device tap sets
+    // `_castConnecting` synchronously (before the sheet finishes
+    // closing), so a true value here means a cast is on its way
+    // and the relay must stay up.
+    if (!_castConnecting && !_casting) {
+      await _stopCastRelay();
+    }
   }
 
   /// Connect to [device], then load the current stream on the TV at
@@ -1854,6 +1924,8 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
     if (!mounted) return;
     if (!connected) {
       setState(() => _castConnecting = false);
+      // The relay started for the picker is not needed — no cast.
+      await _stopCastRelay();
       _snack(_castConnectFailedMessage);
       return;
     }
@@ -1862,8 +1934,54 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
     setState(() => _castConnecting = false);
     if (!loaded) {
       unawaited(_cast.disconnect());
-      _snack(_castLoadFailedMessage);
+      _snack(_castLoadFailedMessage, detail: _castLoadDiagnostic());
     }
+  }
+
+  /// Small grey diagnostics line for the Cast picker (0.2.22): the
+  /// live relay URL when the relay is running (the user can open it
+  /// in another phone's browser to test reachability), or the reason
+  /// the relay did not start. Null when this stream casts directly
+  /// (no relay) — the picker stays unchanged there.
+  String? _castPickerRelayLine() {
+    if (!_lastCastUsedRelay) return null;
+    final CastRelay? relay = _currentRelay;
+    if (relay == null) return null;
+    final CastRelayDiagnostics d = relay.snapshot();
+    if (d.startFailureReason != null) {
+      return 'Relay off: ${d.startFailureReason}';
+    }
+    final String? url = d.relayUrl;
+    if (url == null) return null;
+    return 'Relay: $url';
+  }
+
+  /// Diagnostic detail for a failed Cast load, computed from the
+  /// relay's own observations (0.2.22) — never guessed. Null when
+  /// the stream casts directly (no relay involved): the load-failed
+  /// line stands alone there. The three cases:
+  /// - relay needed but never started → its start-failure reason;
+  /// - relay running, zero requests → the TV could not reach the
+  ///   phone at all;
+  /// - relay reached, upstream fetch failed → the CDN's status.
+  String? _castLoadDiagnostic() {
+    if (!_lastCastUsedRelay) return null;
+    final CastRelay? relay = _currentRelay;
+    if (relay == null) return 'Relay did not start: unknown';
+    final CastRelayDiagnostics d = relay.snapshot();
+    if (d.startFailureReason != null) {
+      return 'Relay did not start: ${d.startFailureReason}';
+    }
+    if (d.requestCount == 0) {
+      return 'TV never reached the phone';
+    }
+    if (d.lastUpstreamStatus != null && d.lastUpstreamStatus != 200) {
+      return 'Relay reached, upstream failed ${d.lastUpstreamStatus}';
+    }
+    if (d.lastUpstreamError != null) {
+      return 'Relay reached, upstream ${d.lastUpstreamError}';
+    }
+    return 'Relay was reached, upstream OK';
   }
 
   /// Pick the URL the TV should load for [url]: the local relay
@@ -1871,27 +1989,29 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
   /// — see cast_relay.dart), the original URL otherwise. Starting
   /// the relay can fail (no Wi-Fi LAN IP, bind failure) — then the
   /// direct URL is used and the existing load-verdict path reports
-  /// the failure; never a crash.
+  /// the failure; never a crash. The relay instance is RETAINED on
+  /// failure (0.2.22) — its failure reason is the diagnosis.
   Future<String> _castUrlFor(String url) async {
     if (!needsCastRelay(url)) {
+      _lastCastUsedRelay = false;
       await _stopCastRelay();
       return url;
     }
-    final CastRelay relay = _castRelay ??= CastRelay();
+    _lastCastUsedRelay = true;
+    final CastRelay relay = _relayInstance;
     final String? relayUrl = await relay.start(sourceUrl: url);
     if (relayUrl == null) {
       debugPrint('Anibee Cast relay unavailable — casting direct');
-      _castRelay = null;
       return url;
     }
     return relayUrl;
   }
 
-  /// Stop the relay server (cast end / load failure / dispose).
-  /// Never throws.
+  /// Stop the relay server (cast end / load failure / dispose /
+  /// picker dismissed). Never throws. The instance is kept (its
+  /// diagnostics record survives for the failure line).
   Future<void> _stopCastRelay() async {
-    final CastRelay? relay = _castRelay;
-    _castRelay = null;
+    final CastRelay? relay = _currentRelay;
     if (relay != null) {
       await relay.stop();
     }
@@ -1968,7 +2088,7 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
       );
     } on CastException catch (e) {
       debugPrint('Anibee Cast reload failed: $e');
-      _snack(_castLoadFailedMessage);
+      _snack(_castLoadFailedMessage, detail: _castLoadDiagnostic());
       await _endCastAndResumeLocal();
     }
   }
@@ -1995,7 +2115,8 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
         // the signed/referer-gated HLS 403s when the receiver
         // fetches it). End the cast, resume local, say so — never
         // sit with a dead remote and a dead center button.
-        _snack(_castLoadFailedMessage);
+        // 0.2.22: the detail line says what the relay observed.
+        _snack(_castLoadFailedMessage, detail: _castLoadDiagnostic());
         unawaited(_endCastAndResumeLocal());
       }
     });
@@ -2061,8 +2182,11 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
     }
   }
 
-  void _snack(String message) {
-    TopNotification.show(context, message);
+  /// [detail] is the smaller second line under the message
+  /// (TopNotification's `detail`) — used for the Cast load-failure
+  /// diagnostic (0.2.22).
+  void _snack(String message, {String? detail}) {
+    TopNotification.show(context, message, detail: detail);
   }
 
   // ---------------------------------------------------------------- sheets

@@ -68,6 +68,53 @@ void main() {
     });
   });
 
+  group('selectLanIp', () {
+    test('Wi-Fi en0 beats VPN utun and cellular pdp_ip0', () {
+      final ({String interfaceName, String address})? picked =
+          selectLanIp(<LanIpCandidate>[
+        (interfaceName: 'utun1', address: '10.8.0.2'),
+        (interfaceName: 'en0', address: '172.16.5.10'),
+        (interfaceName: 'pdp_ip0', address: '10.2.0.9'),
+      ]);
+      expect(picked?.interfaceName, 'en0');
+      expect(picked?.address, '172.16.5.10');
+    });
+
+    test('192.168 en0 beats 10.x utun', () {
+      expect(
+        selectLanIp(<LanIpCandidate>[
+          (interfaceName: 'utun0', address: '10.0.0.1'),
+          (interfaceName: 'en0', address: '192.168.1.5'),
+        ])?.address,
+        '192.168.1.5',
+      );
+    });
+
+    test('en0 without a private address falls back to score order',
+        () {
+      // Wi-Fi on a public address is not preferred over a private
+      // VPN/cellular address — the range score decides.
+      expect(
+        selectLanIp(<LanIpCandidate>[
+          (interfaceName: 'en0', address: '8.8.8.8'),
+          (interfaceName: 'utun1', address: '10.8.0.2'),
+        ])?.address,
+        '10.8.0.2',
+      );
+    });
+
+    test('no en0: score order preserved; empty: null', () {
+      expect(
+        selectLanIp(<LanIpCandidate>[
+          (interfaceName: 'utun0', address: '10.0.0.1'),
+          (interfaceName: 'pdp_ip0', address: '172.16.0.9'),
+        ])?.address,
+        '10.0.0.1',
+      );
+      expect(selectLanIp(<LanIpCandidate>[]), isNull);
+    });
+  });
+
   group('lanIpScore', () {
     test('private LAN ranges first, link-local last', () {
       expect(lanIpScore('192.168.1.5'), lessThan(lanIpScore('10.0.0.2')));
@@ -471,6 +518,146 @@ void main() {
       final CastRelay relay = CastRelay(lanIpOverride: '127.0.0.1');
       await relay.stop();
       expect(relay.isRunning, isFalse);
+    });
+  });
+
+  group('CastRelay diagnostics (0.2.22)', () {
+    late HttpServer upstream;
+    late String upstreamBase;
+    int masterStatus = HttpStatus.ok;
+
+    setUp(() async {
+      upstream = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      upstreamBase = 'http://${upstream.address.address}:${upstream.port}';
+      unawaited(upstream.forEach((HttpRequest req) async {
+        final HttpResponse res = req.response;
+        if (req.uri.path == '/master.m3u8') {
+          res.statusCode = masterStatus;
+          if (masterStatus == HttpStatus.ok) {
+            res.headers.contentType =
+                ContentType.parse('application/vnd.apple.mpegurl');
+            res.add(utf8.encode('#EXTM3U\n#EXTINF:6.0,\nseg-1.ts\n'));
+          }
+        } else if (req.uri.path == '/seg-1.ts') {
+          res.statusCode = HttpStatus.ok;
+          res.headers.contentType = ContentType.parse('video/mp2t');
+          res.add(<int>[1, 2, 3]);
+        } else {
+          res.statusCode = HttpStatus.notFound;
+        }
+        await res.close();
+      }));
+    });
+
+    tearDown(() async {
+      masterStatus = HttpStatus.ok;
+      await upstream.close(force: true);
+    });
+
+    test('start failure records the reason', () async {
+      final CastRelay relay = CastRelay(
+        lanIpLookup: () async => null,
+      );
+      addTearDown(relay.stop);
+      final String? url = await relay.start(
+        sourceUrl: 'https://fetch.nexabloom.top/x/master.m3u8',
+      );
+      expect(url, isNull);
+      expect(relay.isRunning, isFalse);
+      final CastRelayDiagnostics d = relay.snapshot();
+      expect(d.startFailureReason, 'no Wi-Fi (no LAN IP)');
+      expect(d.requestCount, 0);
+      expect(d.relayUrl, isNull);
+    });
+
+    test('request count, LAN IP and interface are recorded', () async {
+      final CastRelay relay = CastRelay(lanIpOverride: '127.0.0.1');
+      addTearDown(relay.stop);
+      final String? relayUrl = await relay.start(
+        sourceUrl: '$upstreamBase/master.m3u8',
+      );
+      expect(relayUrl, isNotNull);
+      expect(relay.snapshot().requestCount, 0);
+      expect(relay.snapshot().lanIp, '127.0.0.1');
+      expect(relay.snapshot().lanInterface, 'test');
+      expect(relay.snapshot().lastUpstreamStatus, isNull);
+      // The TV fetches the master.
+      final HttpClient client = HttpClient();
+      addTearDown(client.close);
+      final HttpClientRequest req =
+          await client.getUrl(Uri.parse(relayUrl!));
+      final HttpClientResponse res = await req.close();
+      expect(res.statusCode, HttpStatus.ok);
+      await res.drain<void>();
+      expect(relay.snapshot().requestCount, 1);
+      expect(relay.snapshot().lastUpstreamStatus, HttpStatus.ok);
+      expect(relay.snapshot().lastUpstreamError, isNull);
+    });
+
+    test('upstream 403 is recorded', () async {
+      masterStatus = HttpStatus.forbidden;
+      final CastRelay relay = CastRelay(lanIpOverride: '127.0.0.1');
+      addTearDown(relay.stop);
+      final String? relayUrl = await relay.start(
+        sourceUrl: '$upstreamBase/master.m3u8',
+      );
+      final HttpClient client = HttpClient();
+      addTearDown(client.close);
+      final HttpClientRequest req =
+          await client.getUrl(Uri.parse(relayUrl!));
+      final HttpClientResponse res = await req.close();
+      expect(res.statusCode, HttpStatus.forbidden);
+      await res.drain<void>();
+      expect(relay.snapshot().requestCount, 1);
+      expect(relay.snapshot().lastUpstreamStatus, HttpStatus.forbidden);
+    });
+
+    test('upstream connection failure is recorded', () async {
+      final CastRelay relay = CastRelay(lanIpOverride: '127.0.0.1');
+      addTearDown(relay.stop);
+      // Port 9 (discard) on loopback refuses the connection.
+      final String? relayUrl = await relay.start(
+        sourceUrl: 'http://127.0.0.1:9/master.m3u8',
+      );
+      expect(relayUrl, isNotNull);
+      final HttpClient client = HttpClient();
+      addTearDown(client.close);
+      final HttpClientRequest req =
+          await client.getUrl(Uri.parse(relayUrl!));
+      final HttpClientResponse res = await req.close();
+      expect(res.statusCode, HttpStatus.badGateway);
+      await res.drain<void>();
+      expect(relay.snapshot().requestCount, 1);
+      expect(relay.snapshot().lastUpstreamStatus, isNull);
+      expect(relay.snapshot().lastUpstreamError, 'connection failed');
+    });
+
+    test('diagnostics survive stop; new start resets them', () async {
+      final CastRelay relay = CastRelay(lanIpOverride: '127.0.0.1');
+      addTearDown(relay.stop);
+      final String? relayUrl = await relay.start(
+        sourceUrl: '$upstreamBase/master.m3u8',
+      );
+      final HttpClient client = HttpClient();
+      addTearDown(client.close);
+      final HttpClientRequest req =
+          await client.getUrl(Uri.parse(relayUrl!));
+      final HttpClientResponse res = await req.close();
+      await res.drain<void>();
+      expect(relay.snapshot().requestCount, 1);
+      await relay.stop();
+      expect(relay.isRunning, isFalse);
+      // The record survives the stop — the player reads it after a
+      // failed load.
+      expect(relay.snapshot().requestCount, 1);
+      expect(relay.snapshot().lanIp, '127.0.0.1');
+      // A new session resets the per-session fields.
+      final String? again = await relay.start(
+        sourceUrl: '$upstreamBase/master.m3u8',
+      );
+      expect(again, isNotNull);
+      expect(relay.snapshot().requestCount, 0);
+      expect(relay.snapshot().lastUpstreamStatus, isNull);
     });
   });
 }

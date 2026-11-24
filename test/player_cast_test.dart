@@ -1,6 +1,7 @@
 import 'package:anibee/models.dart';
 import 'package:anibee/player/trailer_player.dart';
 import 'package:anibee/screens/full_player_screen.dart';
+import 'package:anibee/services/cast_relay.dart';
 import 'package:anibee/services/cast_service.dart';
 import 'package:anibee/services/miruro_resolver.dart';
 import 'package:anibee/settings_store.dart';
@@ -11,6 +12,10 @@ import 'package:media_kit/media_kit.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'cast_service_test.dart';
+
+/// A LAN lookup that finds nothing — forces the relay start to fail
+/// (0.2.22).
+Future<LanIpCandidate?> _noLanIp() async => null;
 
 /// 0.2.19: Chromecast in the player — button, picker, session
 /// transitions and disconnect-resume, all through a MOCKED cast
@@ -97,6 +102,7 @@ void main() {
     WidgetTester tester, {
     String? url,
     bool withStream = true,
+    CastRelay? castRelay,
   }) async {
     store = await SettingsStore.load();
     fake = FakeCastService();
@@ -125,6 +131,7 @@ void main() {
                 )
               : null,
           castService: fake,
+          castRelay: castRelay,
         ),
       ),
     );
@@ -272,6 +279,11 @@ void main() {
     await tester.tap(find.byTooltip('Cast to TV'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
+    // 0.2.22: the picker opens only after the relay starts (real
+    // async I/O) — give it real time, then let the sheet's entrance
+    // animation finish before tapping the device.
+    await settleRealTime(tester);
+    await tester.pump(const Duration(milliseconds: 400));
     await tester.tap(find.text('Living Room TV'));
     await settleRealTime(tester);
     await tester.pump();
@@ -321,6 +333,106 @@ void main() {
       fake.loadCalls.first.url,
       'https://cdn.example.com/ep1.m3u8',
     );
+    await flushTimers(tester);
+  });
+
+  testWidgets('picker shows the relay URL while the relay runs',
+      (WidgetTester tester) async {
+    // 0.2.22: the relay starts before the picker opens, so the
+    // picker shows its live URL — the user can open it in another
+    // phone's browser to test reachability.
+    await pumpPlayer(
+      tester,
+      url: 'https://fetch.nexabloom.top/anime/test/index-f1-v1-a1.m3u8',
+    );
+    fake.devicesValue = <CastDevice>[
+      const CastDevice(id: 'tv-1', name: 'Living Room TV'),
+    ];
+    await tester.tap(find.byTooltip('Cast to TV'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await settleRealTime(tester);
+    expect(
+      find.byWidgetPredicate(
+        (Widget w) =>
+            w is Text &&
+            w.data != null &&
+            w.data!.startsWith('Relay: http://') &&
+            w.data!.contains('/r/') &&
+            w.data!.endsWith('/master.m3u8') &&
+            !w.data!.contains('nexabloom'),
+      ),
+      findsOneWidget,
+    );
+    // Dismiss the picker without a pick (tap the barrier above the
+    // sheet): the relay stops with it.
+    await tester.tapAt(const Offset(195, 100));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await settleRealTime(tester);
+    await tester.pump();
+    expect(playerState(tester).castRelayRunningForTest, isFalse);
+    await flushTimers(tester);
+  });
+
+  testWidgets('picker shows the relay-off reason when it cannot start',
+      (WidgetTester tester) async {
+    await pumpPlayer(
+      tester,
+      url: 'https://fetch.nexabloom.top/anime/test/index-f1-v1-a1.m3u8',
+      castRelay: CastRelay(lanIpLookup: _noLanIp),
+    );
+    fake.devicesValue = <CastDevice>[
+      const CastDevice(id: 'tv-1', name: 'Living Room TV'),
+    ];
+    await tester.tap(find.byTooltip('Cast to TV'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await settleRealTime(tester);
+    expect(
+      find.text('Relay off: no Wi-Fi (no LAN IP)'),
+      findsOneWidget,
+    );
+    // Dismiss the picker (tap the barrier above the sheet).
+    await tester.tapAt(const Offset(195, 100));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await flushTimers(tester);
+  });
+
+  testWidgets('failed cast load shows the relay diagnostic line',
+      (WidgetTester tester) async {
+    // 0.2.22: the relay started, the load threw before the TV ever
+    // fetched from it — the second line says the TV never reached
+    // the phone (not a CDN error, not a guess).
+    await pumpPlayer(
+      tester,
+      url: 'https://fetch.nexabloom.top/anime/test/index-f1-v1-a1.m3u8',
+    );
+    fake.loadShouldThrow = true;
+    fake.devicesValue = <CastDevice>[
+      const CastDevice(id: 'tv-1', name: 'Living Room TV'),
+    ];
+    await tester.tap(find.byTooltip('Cast to TV'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    // 0.2.22: the picker opens only after the relay starts (real
+    // async I/O) — give it real time, then let the sheet's entrance
+    // animation finish before tapping the device.
+    await settleRealTime(tester);
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.text('Living Room TV'));
+    await settleRealTime(tester);
+    await tester.pump();
+    await settleRealTime(tester);
+    await tester.pump();
+    expect(playerState(tester).castingForTest, isFalse);
+    expect(fake.disconnectCalls, 1);
+    expect(
+      find.text('Could not play on TV — this link does not open on the TV.'),
+      findsOneWidget,
+    );
+    expect(find.text('TV never reached the phone'), findsOneWidget);
     await flushTimers(tester);
   });
 
