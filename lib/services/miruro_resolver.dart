@@ -28,7 +28,7 @@ class ResolvedStream {
   /// Human label, e.g. "Miruro MegaPlay 1080p" / "TorBox Cached 1080p".
   final String label;
 
-  /// 'Miruro' | 'Anikoto' | 'TorBox' | 'Real-Debrid'.
+  /// 'Miruro' | 'Anikoto' | 'AnimeKai' | 'TorBox' | 'Real-Debrid'.
   final String source;
 
   /// Headers the player must send (Referer / Origin / UA).

@@ -59,14 +59,11 @@ Future<({String server, String subDub, String? debrid})?> showServerSheet({
 }
 
 /// Mock M1.1 language availability per server (real data in M2).
-/// AniZone is Sub-only (its watch pages carry English subtitles,
-/// no Dub audio) — 0.2.12 corrected the old 'Spanish' entry, which
-/// was placeholder data.
+/// AnimeKai carries Sub + Dub (its server list has both groups).
 const Map<String, List<String>> kServerLanguages = <String, List<String>>{
   'Miruro': <String>['English'],
   'AniKoto': <String>['English', 'Japanese'],
-  'ReAnime': <String>['English'],
-  'AniZone': <String>['English'],
+  'AnimeKai': <String>['English'],
 };
 
 const List<String> kSheetLanguages = <String>[

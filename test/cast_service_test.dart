@@ -163,6 +163,19 @@ void main() {
     });
   });
 
+  group('castLoadVerdictTimeout (0.2.23)', () {
+    test('relay casts wait 30 s, direct casts 10 s', () {
+      expect(
+        castLoadVerdictTimeout(relay: true),
+        const Duration(seconds: 30),
+      );
+      expect(
+        castLoadVerdictTimeout(relay: false),
+        const Duration(seconds: 10),
+      );
+    });
+  });
+
   group('castLoadVerdict (0.2.20)', () {
     GoggleCastMediaStatus status(
       CastMediaPlayerState state, {
@@ -278,6 +291,13 @@ class FakeCastService implements CastService {
   bool connectResult = true;
   bool loadShouldThrow = false;
   bool loadStuckInLoading = false;
+
+  /// Slow-start receiver (0.2.23): the TV reports loading for this
+  /// long, then starts playing. Null = plays immediately (the old
+  /// behaviour). Set alongside a relay cast to prove the 30 s
+  /// verdict window outlasts a ~12 s buffer; set on a direct cast
+  /// to prove the 10 s window still gives up.
+  Duration? loadPlayingAfter;
   bool discoveryStarted = false;
   bool _connected = false;
   CastMediaState _state = const CastMediaState(
@@ -376,13 +396,17 @@ class FakeCastService implements CastService {
     required String title,
     required String subtitle,
     String? posterUrl,
+    bool isRelayCast = false,
   }) async {
     if (loadShouldThrow) throw const CastException('load-failed');
     loadCalls.add((url: url, position: position));
+    // Mirror the real service's verdict wait (0.2.20): the
+    // receiver reports loading but never starts — after the verdict
+    // window the load fails instead of flipping into remote mode.
+    // The window is 30 s for relay casts, 10 s for direct (0.2.23).
+    final Duration verdictWindow =
+        castLoadVerdictTimeout(relay: isRelayCast);
     if (loadStuckInLoading) {
-      // Mirror the real service's verdict wait (0.2.20): the
-      // receiver reports loading but never starts — after the 10 s
-      // window the load fails instead of flipping into remote mode.
       _state = const CastMediaState(
         playing: false,
         position: Duration.zero,
@@ -391,8 +415,32 @@ class FakeCastService implements CastService {
         ended: false,
       );
       _mediaController.add(_state);
-      await Future<void>.delayed(const Duration(seconds: 10));
+      await Future<void>.delayed(verdictWindow);
       throw const CastException('load-failed');
+    }
+    if (loadPlayingAfter != null) {
+      _state = const CastMediaState(
+        playing: false,
+        position: Duration.zero,
+        duration: Duration.zero,
+        volume: 1,
+        ended: false,
+      );
+      _mediaController.add(_state);
+      if (loadPlayingAfter! > verdictWindow) {
+        await Future<void>.delayed(verdictWindow);
+        throw const CastException('load-failed');
+      }
+      await Future<void>.delayed(loadPlayingAfter!);
+      _state = CastMediaState(
+        playing: true,
+        position: position,
+        duration: const Duration(minutes: 24),
+        volume: 1,
+        ended: false,
+      );
+      _mediaController.add(_state);
+      return;
     }
     _state = CastMediaState(
       playing: true,

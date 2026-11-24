@@ -218,13 +218,17 @@ abstract class CastService {
   /// Load [url] on the TV at [position] and start playing. Throws
   /// [CastException] when the TV rejects the load (bad/expired
   /// link, referer-gated source) — the caller shows one short
-  /// Hinglish line and stays local.
+  /// Hinglish line and stays local. [isRelayCast] (0.2.23) widens
+  /// the load-verdict wait to 30 s for relay casts (see
+  /// [castLoadVerdictTimeout]) — relayed segments arrive slowly
+  /// and the 10 s window gave up while the TV was still buffering.
   Future<void> loadMedia({
     required String url,
     required Duration position,
     required String title,
     required String subtitle,
     String? posterUrl,
+    bool isRelayCast = false,
   });
 
   /// Best-effort remote controls — never throw.
@@ -234,6 +238,17 @@ abstract class CastService {
   Future<void> setVolume(double volume);
   Future<void> setRate(double rate);
 }
+
+/// How long the load verdict waits for the TV to reach
+/// `playing`/`paused` after `loadMedia`. Relay casts get 30 s
+/// (0.2.23): the TV loads through the phone, so every segment is a
+/// fresh CDN round-trip through the relay and the receiver needs
+/// longer to fill its buffer — the 10 s window gave up while the
+/// TV was still buffering (phone-proven 2026-11-24: "Demon Slayer
+/// episode loading", then blank, the phone erroring only after some
+/// time). Direct casts keep 10 s. Pure — unit-tested.
+Duration castLoadVerdictTimeout({required bool relay}) =>
+    relay ? const Duration(seconds: 30) : const Duration(seconds: 10);
 
 /// Verdict for one receiver media status, or null when it says
 /// nothing about the pending load yet. Statuses from the PREVIOUS
@@ -488,6 +503,7 @@ class GoogleCastService implements CastService {
     required String title,
     required String subtitle,
     String? posterUrl,
+    bool isRelayCast = false,
   }) async {
     final String? contentType = castContentTypeForUrl(url);
     if (contentType == null) throw const CastException('not-castable');
@@ -519,12 +535,20 @@ class GoogleCastService implements CastService {
     // The iOS channel call is fire-and-forget: a bad/expired link
     // never throws — the receiver just never plays it. Wait for the
     // media status to accept (loading/buffering/playing/paused) or
-    // reject (idle + error) the load.
-    final bool accepted = await _waitForLoadVerdict(previousSessionId);
+    // reject (idle + error) the load. Relay casts wait 30 s
+    // (0.2.23) — their segments arrive through the phone and the
+    // receiver needs longer to reach `playing`.
+    final bool accepted = await _waitForLoadVerdict(
+      previousSessionId,
+      timeout: castLoadVerdictTimeout(relay: isRelayCast),
+    );
     if (!accepted) throw const CastException('load-failed');
   }
 
-  Future<bool> _waitForLoadVerdict(int? previousSessionId) async {
+  Future<bool> _waitForLoadVerdict(
+    int? previousSessionId, {
+    required Duration timeout,
+  }) async {
     final bool? now = castLoadVerdict(
       GoogleCastRemoteMediaClient.instance.mediaStatus,
       previousSessionId,
@@ -542,7 +566,7 @@ class GoogleCastService implements CastService {
     );
     try {
       return await completer.future.timeout(
-        const Duration(seconds: 10),
+        timeout,
         onTimeout: () => false,
       );
     } finally {

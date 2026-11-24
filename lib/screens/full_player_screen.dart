@@ -1964,6 +1964,10 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
   /// - relay running, zero requests → the TV could not reach the
   ///   phone at all;
   /// - relay reached, upstream fetch failed → the CDN's status.
+  /// 0.2.23: the relay-reached lines carry the request count
+  /// ("· 12 req") — a count that stays at 1 means the TV fetched
+  /// only the master and gave up; a growing count means segments
+  /// were flowing.
   String? _castLoadDiagnostic() {
     if (!_lastCastUsedRelay) return null;
     final CastRelay? relay = _currentRelay;
@@ -1976,12 +1980,12 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
       return 'TV never reached the phone';
     }
     if (d.lastUpstreamStatus != null && d.lastUpstreamStatus != 200) {
-      return 'Relay reached, upstream failed ${d.lastUpstreamStatus}';
+      return 'Relay reached, upstream failed ${d.lastUpstreamStatus} · ${d.requestCount} req';
     }
     if (d.lastUpstreamError != null) {
-      return 'Relay reached, upstream ${d.lastUpstreamError}';
+      return 'Relay reached, upstream ${d.lastUpstreamError} · ${d.requestCount} req';
     }
-    return 'Relay was reached, upstream OK';
+    return 'Relay was reached, upstream OK · ${d.requestCount} req';
   }
 
   /// Pick the URL the TV should load for [url]: the local relay
@@ -1999,7 +2003,10 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
     }
     _lastCastUsedRelay = true;
     final CastRelay relay = _relayInstance;
-    final String? relayUrl = await relay.start(sourceUrl: url);
+    final String? relayUrl = await relay.start(
+      sourceUrl: url,
+      referer: castRelayRefererForUrl(url),
+    );
     if (relayUrl == null) {
       debugPrint('Anibee Cast relay unavailable — casting direct');
       return url;
@@ -2035,6 +2042,10 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
         title: widget.anime.title,
         subtitle: 'Episode ${_currentEpisode.number}',
         posterUrl: widget.anime.posterUrl,
+        // 0.2.23: a relay cast waits 30 s for the TV to start
+        // (segments arrive through the phone); a direct cast keeps
+        // the 10 s verdict.
+        isRelayCast: _lastCastUsedRelay,
       );
     } on CastException catch (e) {
       debugPrint('Anibee Cast load failed: $e');
@@ -2085,6 +2096,7 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
         title: widget.anime.title,
         subtitle: 'Episode ${_currentEpisode.number}',
         posterUrl: widget.anime.posterUrl,
+        isRelayCast: _lastCastUsedRelay,
       );
     } on CastException catch (e) {
       debugPrint('Anibee Cast reload failed: $e');

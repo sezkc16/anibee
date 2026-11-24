@@ -48,18 +48,31 @@ import 'package:flutter/foundation.dart';
 /// variant and segment fetches).
 const String kCastRelayReferer = 'https://megaplay.buzz/';
 
+/// The Referer for the megavid CDN (AnimeKai, 0.2.23): the megavid
+/// embed player lives on megavid.buzz and fetches its media from
+/// s-*.megavid.se — the embed origin is the Referer a browser
+/// would send there. Not curl-proven (the media host drops the
+/// VM's connections entirely) — the relay sends it so a Referer
+/// gate, if one exists, is satisfied; an ungated host ignores it.
+const String kCastRelayMegavidReferer = 'https://megavid.buzz/';
+
 /// Host suffixes whose HLS must go through the relay — the hosts
 /// the Miruro/AniKoto chain serves from, plus the chain's own
 /// domains. Proven from the resolver code (`miruro_resolver.dart`:
 /// justanime core API → megaplay embed → nexabloom CDN) and the
 /// 0.2.20 curl evidence (master on fetch.nexabloom.top, segments
-/// on n953x.midnightvoyage.site). A host matches when it equals a
-/// suffix or is a subdomain of one.
+/// on n953x.midnightvoyage.site). 0.2.23 adds `megavid.se` —
+/// AnimeKai's megavid embeds serve HLS from s-*.megavid.se and the
+/// default receiver cannot send the Referer the embed origin
+/// implies. A host matches when it equals a suffix or is a
+/// subdomain of one.
 const List<String> kCastRelayGatedHostSuffixes = <String>[
   'nexabloom.top',
   'midnightvoyage.site',
   'megaplay.buzz',
   'justanime.to',
+  'megavid.se',
+  'megavid.buzz',
 ];
 
 /// Whether [url]'s host is Referer-gated and must be relayed to
@@ -77,10 +90,61 @@ bool needsCastRelay(String url) {
   return false;
 }
 
-/// The Referer to send upstream for [url]. Today the whole gated
-/// set shares the one proven megaplay referer — the CDN checks it
-/// on every host in the chain. Pure — unit-tested.
-String castRelayRefererForUrl(String url) => kCastRelayReferer;
+/// The Referer to send upstream for [url]. The megaplay chain
+/// shares the one proven megaplay referer — the CDN checks it on
+/// every host in the chain. Megavid hosts (AnimeKai, 0.2.23) get
+/// the megavid referer instead. Pure — unit-tested.
+String castRelayRefererForUrl(String url) {
+  final Uri? uri = Uri.tryParse(url);
+  final String host = (uri?.host ?? '').toLowerCase();
+  if (host == 'megavid.se' ||
+      host.endsWith('.megavid.se') ||
+      host == 'megavid.buzz' ||
+      host.endsWith('.megavid.buzz')) {
+    return kCastRelayMegavidReferer;
+  }
+  return kCastRelayReferer;
+}
+
+/// True when [playlistBody] is a master playlist — it lists
+/// variant playlists via `#EXT-X-STREAM-INF` — rather than a media
+/// playlist, which lists segments. Pure — unit-tested.
+bool castRelayIsMasterPlaylist(String playlistBody) =>
+    playlistBody.contains('#EXT-X-STREAM-INF');
+
+/// First variant URI of a master playlist, resolved against [base].
+/// Null when the body lists no variant. Pure — unit-tested.
+Uri? castRelayFirstVariantUri(String playlistBody, Uri base) {
+  final List<String> lines = playlistBody.split('\n');
+  for (int i = 0; i < lines.length; i++) {
+    final String line = lines[i].trim();
+    if (line.startsWith('#EXT-X-STREAM-INF') && i + 1 < lines.length) {
+      final String next = lines[i + 1].trim();
+      if (next.isNotEmpty && !next.startsWith('#')) {
+        return base.resolve(next);
+      }
+    }
+  }
+  return null;
+}
+
+/// First [count] media-segment URIs of a media playlist, resolved
+/// against [base] (bare non-`#` lines, in order). Pure —
+/// unit-tested.
+List<Uri> castRelayFirstMediaSegmentUris(
+  String playlistBody,
+  Uri base, {
+  int count = 3,
+}) {
+  final List<Uri> out = <Uri>[];
+  for (final String raw in playlistBody.split('\n')) {
+    if (out.length >= count) break;
+    final String line = raw.trim();
+    if (line.isEmpty || line.startsWith('#')) continue;
+    out.add(base.resolve(line));
+  }
+  return out;
+}
 
 /// One candidate LAN address: the interface it came from + the
 /// IPv4 address. `NetworkInterface.list` itself cannot be faked in
@@ -327,6 +391,25 @@ class CastRelay {
   String? _lastUpstreamError;
   String? _startFailureReason;
 
+  /// Warm segment cache (0.2.23): the first media segments of the
+  /// current cast, fetched proactively at start so the TV's first
+  /// segment requests are served instantly instead of waiting on a
+  /// fresh CDN round-trip each. Per-cast — cleared on stop / new
+  /// start. Keyed by the absolute target URL string.
+  final Map<String, List<int>> _segmentCache = <String, List<int>>{};
+
+  /// The in-flight prefetch, if any — a test seam only, so tests
+  /// can wait for the warm cache before asserting on it. Never
+  /// awaited by production code: the prefetch must not block the
+  /// master response or the relay start.
+  Future<void>? _prefetchFuture;
+
+  /// The prefetch future for tests (null when no prefetch ran).
+  Future<void>? get prefetchFutureForTest => _prefetchFuture;
+
+  /// Cached segment bytes for tests (count of warmed segments).
+  int get cachedSegmentCountForTest => _segmentCache.length;
+
   /// True while the server is up.
   bool get isRunning => _server != null;
 
@@ -425,11 +508,16 @@ class CastRelay {
     _sourceUrl = sourceUrl;
     _referer = referer;
     _token = _newToken();
+    _segmentCache.clear();
     unawaited(
       server.forEach(_handle).catchError((Object e) {
         debugPrint('Anibee Cast relay: server loop ended: $e');
       }),
     );
+    // 0.2.23: warm the first segments in the background — the TV
+    // reaches `playing` sooner (see _prefetchSegments). Never
+    // awaited here: a slow CDN must not delay the relay URL.
+    _prefetchFuture = _prefetchSegments();
     return relayUrl;
   }
 
@@ -444,6 +532,8 @@ class CastRelay {
     _client = null;
     _sourceUrl = null;
     _token = '';
+    _segmentCache.clear();
+    _prefetchFuture = null;
     if (server != null) {
       try {
         await server.close(force: true);
@@ -459,6 +549,67 @@ class CastRelay {
     final List<int> bytes =
         List<int>.generate(12, (_) => random.nextInt(256));
     return base64Url.encode(bytes).replaceAll('=', '');
+  }
+
+  /// Warm the first 3 media segments into [_segmentCache] (0.2.23).
+  /// Best-effort only: any failure — master fetch, variant fetch,
+  /// a segment fetch, or the relay stopping mid-prefetch — is
+  /// swallowed; the TV then fetches that segment normally through
+  /// `_serveTarget`. The prefetch uses the NON-recording fetch
+  /// ([_fetchUpstreamRaw]) so the Cast diagnostics keep describing
+  /// what the TV itself caused, never the warm-up.
+  Future<void> _prefetchSegments() async {
+    try {
+      final String? source = _sourceUrl;
+      if (source == null) return;
+      final Uri masterUri = Uri.parse(source);
+      final HttpClientResponse masterRes =
+          await _fetchUpstreamRaw(masterUri);
+      if (masterRes.statusCode != HttpStatus.ok) {
+        await masterRes.drain<void>();
+        return;
+      }
+      final String masterBody =
+          await masterRes.transform(utf8.decoder).join();
+      List<Uri> segmentUris;
+      if (castRelayIsMasterPlaylist(masterBody)) {
+        final Uri? variant = castRelayFirstVariantUri(masterBody, masterUri);
+        if (variant == null) return;
+        final HttpClientResponse variantRes =
+            await _fetchUpstreamRaw(variant);
+        if (variantRes.statusCode != HttpStatus.ok) {
+          await variantRes.drain<void>();
+          return;
+        }
+        final String variantBody =
+            await variantRes.transform(utf8.decoder).join();
+        segmentUris = castRelayFirstMediaSegmentUris(variantBody, variant);
+      } else {
+        segmentUris =
+            castRelayFirstMediaSegmentUris(masterBody, masterUri);
+      }
+      for (final Uri seg in segmentUris) {
+        if (_server == null) return;
+        try {
+          final HttpClientResponse segRes = await _fetchUpstreamRaw(seg);
+          if (segRes.statusCode != HttpStatus.ok) {
+            await segRes.drain<void>();
+            continue;
+          }
+          final List<int> bytes = await segRes.fold<List<int>>(
+            <int>[],
+            (List<int> acc, List<int> chunk) => acc..addAll(chunk),
+          );
+          _segmentCache[seg.toString()] = bytes;
+        } catch (_) {
+          // One bad segment must not kill the others.
+          continue;
+        }
+      }
+    } catch (_) {
+      // Prefetch is best-effort — never crash the relay.
+      debugPrint('Anibee Cast relay: prefetch failed (best-effort)');
+    }
   }
 
   Future<void> _handle(HttpRequest request) async {
@@ -566,10 +717,25 @@ class CastRelay {
   /// Fetch [target] upstream (with the Referer, Range forwarded)
   /// and stream it back. A playlist response is rewritten and
   /// served as HLS; anything else (segments, keys, init maps) is
-  /// passed through byte-for-byte.
+  /// passed through byte-for-byte. A full (non-Range) segment
+  /// request hits the warm cache first (0.2.23) when the prefetch
+  /// already fetched it — Range requests always go upstream so a
+  /// seek gets an exact 206 slice.
   Future<void> _serveTarget(HttpRequest request, Uri target) async {
     final HttpResponse response = request.response;
     final String? range = request.headers.value('range');
+    if (range == null) {
+      final List<int>? cached = _segmentCache[target.toString()];
+      if (cached != null) {
+        response.statusCode = HttpStatus.ok;
+        response.headers.contentType = ContentType('video', 'mp2t');
+        response.headers.set('Cache-Control', 'no-store');
+        response.contentLength = cached.length;
+        response.add(cached);
+        await response.close();
+        return;
+      }
+    }
     final HttpClientResponse upstream =
         await _fetchUpstream(target, range: range);
     final String upstreamType =
@@ -655,12 +821,9 @@ class CastRelay {
     Uri target, {
     String? range,
   }) async {
-    final HttpClient client = _client!;
     try {
-      final HttpClientRequest req = await client.getUrl(target);
-      req.headers.set('Referer', _referer);
-      if (range != null) req.headers.set('range', range);
-      final HttpClientResponse res = await req.close();
+      final HttpClientResponse res =
+          await _fetchUpstreamRaw(target, range: range);
       _lastUpstreamStatus = res.statusCode;
       _lastUpstreamError = null;
       return res;
@@ -673,5 +836,20 @@ class CastRelay {
           : 'fetch failed';
       rethrow;
     }
+  }
+
+  /// The raw upstream GET (Referer + optional Range) WITHOUT
+  /// touching the diagnostics — the prefetch (0.2.23) uses this so
+  /// the diagnostic record keeps describing what the TV itself
+  /// caused. Throws on a transport failure, like [_fetchUpstream].
+  Future<HttpClientResponse> _fetchUpstreamRaw(
+    Uri target, {
+    String? range,
+  }) async {
+    final HttpClient client = _client!;
+    final HttpClientRequest req = await client.getUrl(target);
+    req.headers.set('Referer', _referer);
+    if (range != null) req.headers.set('range', range);
+    return req.close();
   }
 }

@@ -941,10 +941,17 @@ String _mockAirDate(int episodeNumber) {
   return '${months[d.month - 1]} ${d.day}, ${d.year}';
 }
 
-/// Default Sources order: Miruro, AniKoto, AllAnime, then AnimeKai,
-/// ReAnime, AniZone. The user can reorder in Settings > Sources; this is
-/// only the default. (No ranking by episode counts — the 01:41 "1 2 3"
-/// meant the episode NUMBER grid, not a sources ranking.)
+/// Default Sources order: Miruro, AniKoto, AnimeKai. The user can
+/// reorder in Settings > Sources; this is only the default. (No
+/// ranking by episode counts — the 01:41 "1 2 3" meant the episode
+/// NUMBER grid, not a sources ranking.)
+/// 0.2.23: ReAnime (flixcloud token API 410s — dead) and AniZone
+/// are removed; AnimeKai (animekai.ro, the revival clone — the
+/// original shut down May 10, 2026) takes the 3rd slot. The list
+/// is 3 sources, not 4: AniPM was researched the same day but NOT
+/// added — its streams live inside a Cloudflare-gated settlar
+/// embed the VM cannot open, so no resolver could be verified
+/// against a real stream.
 List<ProviderSource> defaultSources() {
   return const <ProviderSource>[
     ProviderSource(
@@ -958,11 +965,6 @@ List<ProviderSource> defaultSources() {
       tagline: '1080p • Sub • Stable',
       enabled: true,
     ),
-    ProviderSource(
-      name: 'ReAnime',
-      tagline: 'HD • Sub/Dub',
-      enabled: true,
-    ),
-    ProviderSource(name: 'AniZone', tagline: '1080p • Sub', enabled: true),
+    ProviderSource(name: 'AnimeKai', tagline: '1080p • Sub/Dub', enabled: true),
   ];
 }

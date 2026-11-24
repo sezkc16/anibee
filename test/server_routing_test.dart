@@ -2,12 +2,12 @@ import 'package:anibee/models.dart';
 import 'package:anibee/services/airing_notifications.dart';
 import 'package:anibee/services/airing_service.dart';
 import 'package:anibee/services/anilist_service.dart';
+import 'package:anibee/services/animekai_resolver.dart';
 import 'package:anibee/services/app_services.dart';
 import 'package:anibee/services/debrid_service.dart';
 import 'package:anibee/services/download_service.dart';
 import 'package:anibee/services/miruro_resolver.dart';
 import 'package:anibee/services/oauth_service.dart';
-import 'package:anibee/services/reanime_resolver.dart';
 import 'package:anibee/settings_store.dart';
 import 'package:anibee/widgets/server_sheet.dart';
 import 'package:flutter/services.dart';
@@ -17,11 +17,13 @@ import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// 0.2.11: the server picker is HONEST — resolveEpisode actually
-/// routes to the chosen server. ReAnime goes to the ReAnime resolver,
-/// AniKoto to the anikoto.cz chain inside MiruroResolver, Miruro to
-/// the justanime chain. A MockClient that 404s everything proves
-/// which resolver was entered: the entered resolver sets its
+/// routes to the chosen server. AnimeKai goes to the AnimeKai
+/// resolver, AniKoto to the anikoto.cz chain inside MiruroResolver,
+/// Miruro to the justanime chain. A MockClient that 404s everything
+/// proves which resolver was entered: the entered resolver sets its
 /// lastError, the other stays clean. No fake streams, ever.
+/// 0.2.23: ReAnime + AniZone are removed — their routing tests go
+/// with them.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -56,7 +58,7 @@ void main() {
     return AppServices(
       anilist: anilist,
       miruro: MiruroResolver(client: client, anilist: anilist),
-      reanime: ReAnimeResolver(client: client, anilist: anilist),
+      animekai: AnimeKaiResolver(client: client, anilist: anilist),
       debrid: DebridService(),
       oauth: OAuthService(),
       downloads: DownloadService(),
@@ -65,7 +67,7 @@ void main() {
     );
   }
 
-  test('server=ReAnime routes to ReAnime (miruro untouched)', () async {
+  test('server=AnimeKai routes to AnimeKai (miruro untouched)', () async {
     final AppServices svc = await services();
     final SettingsStore store = await SettingsStore.load();
     final stream = await svc.resolveEpisode(
@@ -73,14 +75,14 @@ void main() {
       episode: 1,
       subDub: 'Sub',
       store: store,
-      server: 'ReAnime',
+      server: 'AnimeKai',
     );
     expect(stream, isNull);
-    expect(svc.reanime.lastError, isNotNull);
+    expect(svc.animekai.lastError, isNotNull);
     expect(svc.miruro.lastError, isNull);
   });
 
-  test('server=AniKoto routes to the anikoto chain (reanime untouched)',
+  test('server=AniKoto routes to the anikoto chain (animekai untouched)',
       () async {
     final AppServices svc = await services();
     final SettingsStore store = await SettingsStore.load();
@@ -93,13 +95,13 @@ void main() {
     );
     expect(stream, isNull);
     expect(svc.miruro.lastError, isNotNull);
-    expect(svc.reanime.lastError, isNull);
+    expect(svc.animekai.lastError, isNull);
   });
 
   test('no server arg honors store.preferredServer', () async {
     final AppServices svc = await services();
     final SettingsStore store = await SettingsStore.load();
-    await store.setPreferredServer('ReAnime');
+    await store.setPreferredServer('AnimeKai');
     final stream = await svc.resolveEpisode(
       anime: jjk,
       episode: 1,
@@ -107,44 +109,27 @@ void main() {
       store: store,
     );
     expect(stream, isNull);
-    expect(svc.reanime.lastError, isNotNull);
+    expect(svc.animekai.lastError, isNotNull);
     expect(svc.miruro.lastError, isNull);
     await store.setPreferredServer('Miruro');
   });
 
-  test('server=AniZone routes to AniZone (miruro/reanime untouched)',
-      () async {
-    final AppServices svc = await services();
-    final SettingsStore store = await SettingsStore.load();
-    final stream = await svc.resolveEpisode(
-      anime: jjk,
-      episode: 1,
-      subDub: 'Sub',
-      store: store,
-      server: 'AniZone',
-    );
-    expect(stream, isNull);
-    expect(svc.anizone.lastError, isNotNull);
-    expect(svc.miruro.lastError, isNull);
-    expect(svc.reanime.lastError, isNull);
-  });
-
-  test('default sources have no AllAnime / AnimeKai', () {
+  test('default sources are Miruro, AniKoto, AnimeKai — no ReAnime / AniZone',
+      () {
     final List<String> names =
         defaultSources().map((ProviderSource s) => s.name).toList();
-    expect(names, containsAll(<String>['Miruro', 'AniKoto', 'ReAnime']));
+    expect(names, <String>['Miruro', 'AniKoto', 'AnimeKai']);
     expect(names, isNot(contains('AllAnime')));
-    expect(names, isNot(contains('AnimeKai')));
+    expect(names, isNot(contains('ReAnime')));
+    expect(names, isNot(contains('AniZone')));
   });
 
-  test('default sources include AniZone, enabled (0.2.12)', () {
+  test('default sources include AnimeKai, enabled (0.2.23)', () {
     final List<ProviderSource> sources = defaultSources();
-    final ProviderSource anizone = sources.firstWhere(
-      (ProviderSource s) => s.name == 'AniZone',
+    final ProviderSource animekai = sources.firstWhere(
+      (ProviderSource s) => s.name == 'AnimeKai',
     );
-    expect(anizone.enabled, isTrue);
-    // The picker language map: AniZone is Sub-only English
-    // (the 0.2.11 Spanish entry was placeholder data).
-    expect(kServerLanguages['AniZone'], <String>['English']);
+    expect(animekai.enabled, isTrue);
+    expect(kServerLanguages['AnimeKai'], <String>['English']);
   });
 }

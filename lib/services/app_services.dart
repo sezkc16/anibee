@@ -3,13 +3,12 @@ import '../settings_store.dart';
 import 'airing_notifications.dart';
 import 'airing_service.dart';
 import 'anilist_service.dart';
-import 'anizone_resolver.dart';
+import 'animekai_resolver.dart';
 import 'debrid_service.dart';
 import 'download_service.dart';
 import 'miruro_resolver.dart';
 import 'oauth_service.dart';
 import 'provider_config.dart';
-import 'reanime_resolver.dart';
 
 /// All M2 services, created once in main() and passed down through
 /// AppShell so screens never construct their own clients.
@@ -17,24 +16,21 @@ class AppServices {
   AppServices({
     required this.anilist,
     required this.miruro,
-    ReAnimeResolver? reanime,
-    AniZoneResolver? anizone,
+    AnimeKaiResolver? animekai,
     required this.debrid,
     required this.oauth,
     required this.downloads,
     required this.airing,
     required this.airingNotifications,
     this.configService,
-  })  : reanime = reanime ?? ReAnimeResolver(anilist: anilist),
-        anizone = anizone ?? AniZoneResolver(anilist: anilist);
+  })  : animekai = animekai ?? AnimeKaiResolver(anilist: anilist);
 
   factory AppServices.create({ProviderConfigService? configService}) {
     final AniListService anilist = AniListService();
     return AppServices(
       anilist: anilist,
       miruro: MiruroResolver(anilist: anilist),
-      reanime: ReAnimeResolver(anilist: anilist),
-      anizone: AniZoneResolver(anilist: anilist),
+      animekai: AnimeKaiResolver(anilist: anilist),
       debrid: DebridService(),
       oauth: OAuthService(),
       downloads: DownloadService(),
@@ -47,13 +43,11 @@ class AppServices {
   final AniListService anilist;
   final MiruroResolver miruro;
 
-  /// ReAnime (0.2.11): its own selectable resolver — flixcloud
-  /// decrypt on-device, no server.
-  final ReAnimeResolver reanime;
-
-  /// AniZone (0.2.12): its own selectable resolver — anizone.to
-  /// scrape (search -> series -> watch HLS), Sub-only.
-  final AniZoneResolver anizone;
+  /// AnimeKai (0.2.23): its own selectable resolver — animekai.ro
+  /// chain (search -> anime page -> episode list -> server list ->
+  /// megavid embed -> signed HLS). Replaces ReAnime (removed —
+  /// flixcloud token API 410s) and AniZone (removed).
+  final AnimeKaiResolver animekai;
   final DebridService debrid;
   final OAuthService oauth;
 
@@ -81,15 +75,15 @@ class AppServices {
   /// Resolve a playable stream for an episode.
   /// [debrid] is null (source resolvers) or 'torbox' / 'realdebrid'.
   /// [server] is the chosen source ('Miruro' | 'AniKoto' |
-  /// 'ReAnime' | 'AniZone') — 0.2.11 actually routes to it now:
-  /// Miruro = justanime chain, AniKoto = anikoto.cz chain, ReAnime =
-  /// the flixcloud chain, AniZone = the anizone.to chain (0.2.12).
-  /// Previously every non-debrid resolve silently went to Miruro
-  /// and `preferredServer` was display-only. When the chosen server
-  /// fails and the user's fallback setting is on, the other
-  /// Miruro-family server is tried once. Returns null when nothing
-  /// resolved — [miruro.lastError] / [reanime.lastError] /
-  /// [anizone.lastError] / the debrid path carries the reason.
+  /// 'AnimeKai') — 0.2.11 actually routes to it now:
+  /// Miruro = justanime chain, AniKoto = anikoto.cz chain, AnimeKai
+  /// = the animekai.ro chain (0.2.23). Previously every non-debrid
+  /// resolve silently went to Miruro and `preferredServer` was
+  /// display-only. When the chosen server fails and the user's
+  /// fallback setting is on, the other Miruro-family server is
+  /// tried once. Returns null when nothing resolved —
+  /// [miruro.lastError] / [animekai.lastError] / the debrid path
+  /// carries the reason.
   Future<ResolvedStream?> resolveEpisode({
     required Anime anime,
     required int episode,
@@ -121,15 +115,8 @@ class AppServices {
       );
     }
     final String chosen = server ?? store.preferredServer;
-    if (chosen == 'ReAnime') {
-      return reanime.resolve(
-        anime: anime,
-        episodeNumber: episode,
-        subDub: subDub,
-      );
-    }
-    if (chosen == 'AniZone') {
-      return anizone.resolve(
+    if (chosen == 'AnimeKai') {
+      return animekai.resolve(
         anime: anime,
         episodeNumber: episode,
         subDub: subDub,

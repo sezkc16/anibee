@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:anibee/models.dart';
 import 'package:anibee/player/trailer_player.dart';
 import 'package:anibee/screens/full_player_screen.dart';
@@ -526,6 +528,124 @@ void main() {
     expect(fake.disconnectCalls, 1);
     expect(
       find.text('Could not play on TV — this link does not open on the TV.'),
+      findsOneWidget,
+    );
+    await flushTimers(tester);
+  });
+
+  testWidgets('relay cast waits 30 s: TV starting after 12 s still plays',
+      (WidgetTester tester) async {
+    // 0.2.23: the TV buffers slowly through the relay — loading
+    // for 12 s, then playing. The old 10 s window gave up while
+    // the TV was still buffering (phone-proven 2026-11-24); the
+    // relay window is 30 s, so this must now succeed.
+    await pumpPlayer(
+      tester,
+      url: 'https://fetch.nexabloom.top/anime/test/index-f1-v1-a1.m3u8',
+    );
+    fake.loadPlayingAfter = const Duration(seconds: 12);
+    fake.devicesValue = <CastDevice>[
+      const CastDevice(id: 'tv-1', name: 'Living Room TV'),
+    ];
+    await tester.tap(find.byTooltip('Cast to TV'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await settleRealTime(tester);
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.text('Living Room TV'));
+    await tester.pump(const Duration(seconds: 13));
+    await tester.pump();
+    expect(playerState(tester).castingForTest, isTrue);
+    expect(find.text('Playing on TV'), findsOneWidget);
+    expect(fake.loadCalls.first.url, contains('/r/'));
+    await flushTimers(tester);
+  });
+
+  testWidgets('direct cast still gives up after 10 s of loading',
+      (WidgetTester tester) async {
+    // 0.2.23: the longer window is for RELAY casts only — a direct
+    // cast whose TV takes 12 s to start still fails after 10 s.
+    await pumpPlayer(tester, url: 'https://cdn.example.com/ep1.m3u8');
+    fake.loadPlayingAfter = const Duration(seconds: 12);
+    fake.devicesValue = <CastDevice>[
+      const CastDevice(id: 'tv-1', name: 'Living Room TV'),
+    ];
+    await tester.tap(find.byTooltip('Cast to TV'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.text('Living Room TV'));
+    await tester.pump(const Duration(seconds: 11));
+    await tester.pump();
+    expect(playerState(tester).castingForTest, isFalse);
+    expect(fake.disconnectCalls, 1);
+    expect(
+      find.text('Could not play on TV — this link does not open on the TV.'),
+      findsOneWidget,
+    );
+    await flushTimers(tester);
+  });
+
+  testWidgets('failed relay load shows the request count in the diagnostic',
+      (WidgetTester tester) async {
+    // 0.2.23: the failure line carries how many requests reached
+    // the relay — a count that stays at 1 means the TV fetched
+    // only the master and gave up. The relay is injected on
+    // loopback: the VM's egress proxy intercepts a GET to its own
+    // LAN IP, so the TV-simulated fetch would never arrive.
+    await pumpPlayer(
+      tester,
+      url: 'https://fetch.nexabloom.top/anime/test/index-f1-v1-a1.m3u8',
+      castRelay: CastRelay(lanIpOverride: '127.0.0.1'),
+    );
+    fake.loadShouldThrow = true;
+    fake.devicesValue = <CastDevice>[
+      const CastDevice(id: 'tv-1', name: 'Living Room TV'),
+    ];
+    await tester.tap(find.byTooltip('Cast to TV'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await settleRealTime(tester);
+    await tester.pump(const Duration(milliseconds: 400));
+    // The TV fetches the relay master once before the load throws.
+    // A raw socket (not HttpClient — the widget-test binding mocks
+    // every HttpClient request to 400) is the TV here. Only the
+    // request arriving matters for the diagnostic — the response
+    // body is irrelevant, so the socket is dropped after a short
+    // real wait instead of waiting on the relay's reply (the
+    // relay's upstream fetch is mocked in this binding and its
+    // drain never returns).
+    final String? relayUrl =
+        playerState(tester).castRelayDiagnosticsForTest?.relayUrl;
+    expect(relayUrl, isNotNull);
+    final Uri relayUri = Uri.parse(relayUrl!);
+    await tester.runAsync(() async {
+      final Socket socket =
+          await Socket.connect(relayUri.host, relayUri.port);
+      socket.write(
+        'GET ${relayUri.path} HTTP/1.1\r\n'
+        'Host: ${relayUri.host}\r\n'
+        'Connection: close\r\n\r\n',
+      );
+      await socket.flush();
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      await socket.close();
+    });
+    await tester.pump();
+    await tester.tap(find.text('Living Room TV'));
+    await settleRealTime(tester);
+    await tester.pump();
+    await settleRealTime(tester);
+    await tester.pump();
+    expect(playerState(tester).castingForTest, isFalse);
+    expect(
+      find.text('Could not play on TV — this link does not open on the TV.'),
+      findsOneWidget,
+    );
+    expect(
+      find.byWidgetPredicate(
+        (Widget w) =>
+            w is Text && w.data != null && w.data!.contains('· 1 req'),
+      ),
       findsOneWidget,
     );
     await flushTimers(tester);

@@ -602,50 +602,33 @@ class SettingsStore extends ChangeNotifier {
             preferred: m['preferred'] as bool? ?? false,
           );
         }).toList();
-        // 0.2.11 migration: AllAnime has no resolver (removed) and
-        // AnimeKai shut down permanently (May 10, 2026 — the domain
-        // is parked). Drop both from any persisted list so the
-        // picker never offers a source that cannot resolve. Add
-        // ReAnime (new real resolver) when it is missing.
+        // 0.2.23 migration: ReAnime (flixcloud token API 410s —
+        // dead) and AniZone are removed — drop both from any
+        // persisted list so the picker never offers a source that
+        // cannot resolve. Add AnimeKai (animekai.ro) when missing.
+        // The 0.2.11 filter that dropped 'AnimeKai' (the ORIGINAL
+        // shut down May 10, 2026) is gone: animekai.ro is the new
+        // revival source.
         sources = sources
             .where(
               (ProviderSource s) =>
-                  s.name != 'AllAnime' && s.name != 'AnimeKai',
+                  s.name != 'AllAnime' &&
+                  s.name != 'ReAnime' &&
+                  s.name != 'AniZone',
             )
             .toList();
-        if (!sources.any((ProviderSource s) => s.name == 'ReAnime')) {
+        if (!sources.any((ProviderSource s) => s.name == 'AnimeKai')) {
           sources.add(
             const ProviderSource(
-              name: 'ReAnime',
-              tagline: 'HD • Sub/Dub',
+              name: 'AnimeKai',
+              tagline: '1080p • Sub/Dub',
               enabled: true,
             ),
           );
-        }
-        // 0.2.12 migration: AniZone has a real resolver now — add it
-        // when missing, and re-enable it when a persisted list still
-        // carries the 0.2.11 disabled flag (no resolver then). The
-        // picker only lists enabled sources, so a stale disabled
-        // flag would hide a working source forever.
-        if (!sources.any((ProviderSource s) => s.name == 'AniZone')) {
-          sources.add(
-            const ProviderSource(
-              name: 'AniZone',
-              tagline: '1080p • Sub',
-              enabled: true,
-            ),
-          );
-        } else {
-          sources = sources
-              .map(
-                (ProviderSource s) => s.name == 'AniZone' && !s.enabled
-                    ? s.copyWith(enabled: true)
-                    : s,
-              )
-              .toList();
         }
         if (preferredServer == 'AllAnime' ||
-            preferredServer == 'AnimeKai') {
+            preferredServer == 'ReAnime' ||
+            preferredServer == 'AniZone') {
           preferredServer = 'Miruro';
         }
         if (!sources.any((ProviderSource s) => s.preferred)) {

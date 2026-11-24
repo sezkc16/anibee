@@ -26,6 +26,13 @@ void main() {
       );
       expect(needsCastRelay('https://megaplay.buzz/embed/x'), isTrue);
       expect(needsCastRelay('https://core.justanime.to/api/watch'), isTrue);
+      // 0.2.23: AnimeKai's megavid embeds serve HLS from
+      // s-*.megavid.se — the receiver cannot send the Referer.
+      expect(
+        needsCastRelay('https://s-90.megavid.se/uwu/abc/master.txt'),
+        isTrue,
+      );
+      expect(needsCastRelay('https://megavid.buzz/mal/52299/1/sub'), isTrue);
       expect(
         needsCastRelay('https://sub.fetch.nexabloom.top/x.m3u8'),
         isTrue,
@@ -65,6 +72,79 @@ void main() {
         castRelayRefererForUrl('https://n953x.midnightvoyage.site/x.jpg'),
         'https://megaplay.buzz/',
       );
+    });
+
+    test('megavid hosts get the megavid referer (0.2.23)', () {
+      expect(
+        castRelayRefererForUrl('https://s-90.megavid.se/uwu/x/master.txt'),
+        'https://megavid.buzz/',
+      );
+      expect(
+        castRelayRefererForUrl('https://megavid.buzz/mal/52299/1/sub'),
+        'https://megavid.buzz/',
+      );
+      expect(
+        castRelayRefererForUrl('https://cdn.example.com/ep1.m3u8'),
+        'https://megaplay.buzz/',
+      );
+    });
+  });
+
+  group('prefetch playlist helpers (0.2.23)', () {
+    test('master vs media playlist detection', () {
+      expect(
+        castRelayIsMasterPlaylist(
+          '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=5000000\nv1080.m3u8\n',
+        ),
+        isTrue,
+      );
+      expect(
+        castRelayIsMasterPlaylist(
+          '#EXTM3U\n#EXTINF:6.0,\nseg-1.ts\n',
+        ),
+        isFalse,
+      );
+    });
+
+    test('first variant URI resolves relative to the master', () {
+      expect(
+        castRelayFirstVariantUri(
+          '#EXTM3U\n'
+          '#EXT-X-STREAM-INF:BANDWIDTH=5000000\n'
+          'v1080.m3u8?token=abc\n'
+          '#EXT-X-STREAM-INF:BANDWIDTH=2500000\n'
+          'v720.m3u8\n',
+          Uri.parse('https://cdn.example.com/hls/master.m3u8'),
+        ),
+        Uri.parse('https://cdn.example.com/hls/v1080.m3u8?token=abc'),
+      );
+      expect(
+        castRelayFirstVariantUri(
+          '#EXTM3U\n#EXTINF:6.0,\nseg-1.ts\n',
+          Uri.parse('https://cdn.example.com/hls/master.m3u8'),
+        ),
+        isNull,
+      );
+    });
+
+    test('first media segments: bare lines only, capped at 3', () {
+      final List<Uri> segs = castRelayFirstMediaSegmentUris(
+        '#EXTM3U\n'
+        '#EXT-X-VERSION:3\n'
+        '#EXTINF:6.0,\n'
+        'seg-1.ts\n'
+        '#EXTINF:6.0,\n'
+        'seg-2.ts\n'
+        '#EXTINF:6.0,\n'
+        'https://other.example.com/seg-3.ts\n'
+        '#EXTINF:6.0,\n'
+        'seg-4.ts\n',
+        Uri.parse('https://cdn.example.com/hls/v1080.m3u8'),
+      );
+      expect(segs, hasLength(3));
+      expect(segs[0].toString(), 'https://cdn.example.com/hls/seg-1.ts');
+      expect(segs[1].toString(), 'https://cdn.example.com/hls/seg-2.ts');
+      expect(segs[2].toString(), 'https://other.example.com/seg-3.ts');
     });
   });
 
@@ -241,6 +321,7 @@ void main() {
     late String upstreamBase;
     final List<String> referersSeen = <String>[];
     final List<String> rangesSeen = <String>[];
+    final Map<String, int> upstreamHits = <String, int>{};
 
     const List<int> segmentOne = <int>[1, 2, 3, 4, 5, 6, 7, 8];
     const List<int> segmentTwo = <int>[9, 10, 11, 12];
@@ -251,6 +332,11 @@ void main() {
     Future<void> serveFake(HttpRequest req) async {
       final HttpResponse res = req.response;
       referersSeen.add(req.headers.value('referer') ?? '<none>');
+      upstreamHits.update(
+        req.uri.path,
+        (int v) => v + 1,
+        ifAbsent: () => 1,
+      );
       final String? range = req.headers.value('range');
       if (range != null) rangesSeen.add(range);
       final String path = req.uri.path;
@@ -321,6 +407,7 @@ void main() {
     setUp(() async {
       referersSeen.clear();
       rangesSeen.clear();
+      upstreamHits.clear();
       upstream = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       upstreamBase =
           'http://${upstream.address.address}:${upstream.port}';
@@ -518,6 +605,85 @@ void main() {
       final CastRelay relay = CastRelay(lanIpOverride: '127.0.0.1');
       await relay.stop();
       expect(relay.isRunning, isFalse);
+    });
+
+    test('prefetch warms the first segments — no second upstream fetch',
+        () async {
+      // 0.2.23: the relay fetches the first segments at start, so
+      // the TV's first segment requests are served from the warm
+      // cache instead of waiting on a fresh CDN round-trip each.
+      final CastRelay relay = CastRelay(lanIpOverride: '127.0.0.1');
+      addTearDown(relay.stop);
+      final String? relayUrl = await relay.start(
+        sourceUrl: '$upstreamBase/master.m3u8',
+      );
+      expect(relayUrl, isNotNull);
+      // Wait for the background prefetch to finish.
+      await relay.prefetchFutureForTest;
+      expect(relay.cachedSegmentCountForTest, 2);
+      // The prefetch is invisible to the diagnostics: it must not
+      // record an upstream status or count as a TV request.
+      expect(relay.snapshot().requestCount, 0);
+      expect(relay.snapshot().lastUpstreamStatus, isNull);
+
+      final HttpClient client = HttpClient();
+      addTearDown(client.close);
+      final String masterBody = await getString(client, relayUrl!);
+      final String variantUrl = masterBody
+          .split('\n')
+          .firstWhere((String l) => l.contains('/r/'));
+      final String variantBody = await getString(client, variantUrl);
+      final List<String> segUrls = variantBody
+          .split('\n')
+          .where((String l) => l.contains('/r/'))
+          .toList();
+      // seg-1 is relayLines[1] (index 0 is the key).
+      for (final String segUrl in segUrls.sublist(1)) {
+        final HttpClientRequest req =
+            await client.getUrl(Uri.parse(segUrl));
+        final HttpClientResponse res = await req.close();
+        expect(res.statusCode, HttpStatus.ok);
+        await res.drain<void>();
+      }
+      // Each segment reached the upstream exactly ONCE — by the
+      // prefetch. The TV's requests were served from the cache.
+      expect(upstreamHits['/seg-1.ts'], 1);
+      expect(upstreamHits['/seg-2.ts'], 1);
+      // The playlists were fetched twice (prefetch + TV); only the
+      // segments are cached.
+      expect(upstreamHits['/master.m3u8'], 2);
+      expect(upstreamHits['/v1080.m3u8'], 2);
+    });
+
+    test('prefetch failure does not break the relay', () async {
+      // 0.2.23: the upstream master 404s — the prefetch gives up
+      // quietly and the relay still serves (forwarding the 404),
+      // never crashing.
+      final HttpServer badUpstream =
+          await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      addTearDown(() => badUpstream.close(force: true));
+      unawaited(badUpstream.forEach((HttpRequest req) async {
+        req.response.statusCode = HttpStatus.notFound;
+        await req.response.close();
+      }));
+      final CastRelay relay = CastRelay(lanIpOverride: '127.0.0.1');
+      addTearDown(relay.stop);
+      final String? relayUrl = await relay.start(
+        sourceUrl:
+            'http://${badUpstream.address.address}:${badUpstream.port}/master.m3u8',
+      );
+      expect(relayUrl, isNotNull);
+      expect(relay.isRunning, isTrue);
+      await relay.prefetchFutureForTest;
+      expect(relay.cachedSegmentCountForTest, 0);
+      final HttpClient client = HttpClient();
+      addTearDown(client.close);
+      final HttpClientRequest req =
+          await client.getUrl(Uri.parse(relayUrl!));
+      final HttpClientResponse res = await req.close();
+      expect(res.statusCode, HttpStatus.notFound);
+      await res.drain<void>();
+      expect(relay.isRunning, isTrue);
     });
   });
 
