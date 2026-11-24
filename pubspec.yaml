@@ -71,18 +71,24 @@ dependencies:
   intl: ^0.20.2
 
   # 0.2.19: Chromecast in the player (default receiver CC1AD845,
-  # no custom receiver). flutter_chrome_cast v1.5.0 — the NEWEST
-  # v1.x, deliberately NOT v2: v2.0.0's GoogleCast SPM package
-  # requires iOS 16.0 minimum, but this app targets iOS 15.6
-  # (CI 45381897023 failed on exactly that: "package product
-  # 'GoogleCast' requires minimum platform version 16.0 ... target
-  # supports 15.0"). v1.5.0 needs only iOS 15.0 and its Dart API is
-  # identical to v2 for everything cast_service.dart uses. Do NOT
-  # bump to ^2.0.0 without also raising the iOS deployment target
-  # to 16.0 (drops iOS 15 users — needs the user's say-so). The
-  # player talks to it only through lib/services/cast_service.dart
-  # (mockable).
-  flutter_chrome_cast: ^1.5.0
+  # no custom receiver). flutter_chrome_cast EXACTLY 1.2.9 — the
+  # LAST CocoaPods-only version, deliberately NOT 1.5.0/2.0.0:
+  # - v2.0.0 (CI 45381897023) and v1.5.0 (CI 45385952045) BOTH fail
+  #   the iOS build: their GoogleCast SPM package resolves to
+  #   SRGSSR 4.8.6, which needs iOS 16.0 (.iOS(.v16)), but this app
+  #   targets iOS 15.6 ("package product 'GoogleCast' requires
+  #   minimum platform version 16.0 ... target supports 15.0").
+  # - 1.2.9 has no Package.swift, so Flutter integrates it via
+  #   CocoaPods like the media_kit plugins: podspec iOS 14.0,
+  #   google-cast-sdk ~> 4.8 (the CocoaPods SDK needs only iOS 14).
+  # - Exact pin, NO caret: ^1.2.9 would resolve to 1.5.0 again.
+  # - Its Dart API is identical to v2 for everything
+  #   cast_service.dart uses (verified: analyze clean, all 23 Cast
+  #   tests pass). Do NOT bump without also raising the iOS
+  #   deployment target to 16.0 (drops iOS 15 users — needs the
+  #   user's say-so). The player talks to it only through
+  #   lib/services/cast_service.dart (mockable).
+  flutter_chrome_cast: 1.2.9
 
 dev_dependencies:
   flutter_test:
