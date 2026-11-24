@@ -385,4 +385,259 @@ void main() {
       expect(resolver.lastError, contains('no working server'));
     });
   });
+
+  group('parseFilterResults (recorded filter page)', () {
+    test('finds the base series the 5-hit suggestions miss', () {
+      final List<AnimeKaiCandidate> found =
+          AnimeKaiResolver.parseFilterResults(
+        fixture('animekai_filter_demon.html'),
+      );
+      expect(found.length, 3);
+      final AnimeKaiCandidate base = found.firstWhere(
+        (AnimeKaiCandidate c) =>
+            c.slug == 'demon-slayer-kimetsu-no-yaiba-7bldim',
+      );
+      expect(base.title, 'Demon Slayer: Kimetsu no Yaiba');
+      expect(base.jpTitle, 'Kimetsu no Yaiba');
+      expect(base.type, 'TV');
+      // The filter page carries no year — never vetoed on it.
+      expect(base.year, isNull);
+      expect(
+        found
+            .firstWhere(
+              (AnimeKaiCandidate c) => c.slug.contains('infinity-castle-0'),
+            )
+            .type,
+        'MOVIE',
+      );
+    });
+  });
+
+  group('resolve() — search fixes (recorded responses)', () {
+    const Anime jujutsuKaisen = Anime(
+      id: 'anilist-113415',
+      title: 'Jujutsu Kaisen',
+      rating: 4.5,
+      year: 2020,
+      episodeCount: 24,
+      genres: <String>['Action'],
+      synopsis: 'Test anime.',
+      gradient: <Color>[Color(0xFF3B2A6B), Color(0xFF120E24)],
+      anilistId: 113415,
+    );
+
+    test('"Jujutsu Kaisen (TV)" matches the plain title', () async {
+      // The site appends "(TV)" to the display title; without the
+      // qualifier strip the Jaccard is 2/3 = 0.667, just under the
+      // 0.68 floor, and the user got "Could not find". The rest of
+      // the chain reuses the Solo Leveling recordings by URL
+      // pattern — only the search step is JJK-specific here.
+      final MockClient client = MockClient((http.Request req) async {
+        final String url = req.url.toString();
+        if (url.contains('graphql.anilist.co')) {
+          return http.Response(
+            jsonEncode(<String, Object>{
+              'data': <String, Object>{
+                'Media': <String, Object>{
+                  'title': <String, Object>{
+                    'romaji': 'Jujutsu Kaisen',
+                    'english': 'Jujutsu Kaisen',
+                  },
+                  'seasonYear': 2020,
+                  'format': 'TV',
+                  'episodes': 24,
+                  'status': 'FINISHED',
+                },
+              },
+            }),
+            200,
+          );
+        }
+        if (url.contains('/ajax/anime/search')) {
+          return http.Response.bytes(
+            utf8.encode(fixture('animekai_jjk_search.json')),
+            200,
+          );
+        }
+        if (url.contains('/anime/jujutsu-kaisen-selsui')) {
+          return http.Response.bytes(
+            utf8.encode(
+              '<html><body><div data-id="12345" data-fetch="true">'
+              '</div></body></html>',
+            ),
+            200,
+          );
+        }
+        if (url.contains('/ajax/episode/list/12345')) {
+          return http.Response.bytes(
+            utf8.encode(fixture('animekai_episodes.json')),
+            200,
+          );
+        }
+        if (url.contains('/ajax/server/list')) {
+          return http.Response.bytes(
+            utf8.encode(fixture('animekai_servers.json')),
+            200,
+          );
+        }
+        if (url.contains('/ajax/server?get=')) {
+          return http.Response.bytes(
+            utf8.encode(fixture('animekai_server.json')),
+            200,
+          );
+        }
+        if (url.startsWith('https://megavid.buzz/mal/52299/1/')) {
+          if (url.endsWith('/source')) {
+            return http.Response.bytes(
+              utf8.encode(fixture('animekai_megavid_source.json')),
+              200,
+            );
+          }
+          return http.Response.bytes(
+            utf8.encode(fixture('animekai_megavid_embed.html')),
+            200,
+          );
+        }
+        return http.Response('not found', 404);
+      });
+      final AnimeKaiResolver resolver = AnimeKaiResolver(
+        client: client,
+        anilist: AniListService(client: client),
+      );
+      final ResolvedStream? stream = await resolver.resolve(
+        anime: jujutsuKaisen,
+        episodeNumber: 1,
+        subDub: 'Sub',
+      );
+      expect(stream, isNotNull);
+      expect(stream!.source, 'AnimeKai');
+      expect(stream.label, 'AnimeKai Ani-HD Sub');
+    });
+
+    test('Demon Slayer resolves via filter fallback + megaplay',
+        () async {
+      // The 5-hit suggestions never list the base series, so the
+      // resolver falls back to /filter (recorded page) and the
+      // servers turn out to be megaplay embeds, not megavid.
+      // getSources "enc" is the REAL recorded ciphertext — the
+      // decrypt + sign + master-parse all run for real here.
+      const Anime demonSlayer = Anime(
+        id: 'anilist-38000',
+        title: 'Demon Slayer: Kimetsu no Yaiba',
+        rating: 4.5,
+        year: 2019,
+        episodeCount: 26,
+        genres: <String>['Action'],
+        synopsis: 'Test anime.',
+        gradient: <Color>[Color(0xFF3B2A6B), Color(0xFF120E24)],
+        anilistId: 38000,
+      );
+      final MockClient client = MockClient((http.Request req) async {
+        final String url = req.url.toString();
+        if (url.contains('graphql.anilist.co')) {
+          return http.Response(
+            jsonEncode(<String, Object>{
+              'data': <String, Object>{
+                'Media': <String, Object>{
+                  'title': <String, Object>{
+                    'romaji': 'Kimetsu no Yaiba',
+                    'english': 'Demon Slayer: Kimetsu no Yaiba',
+                  },
+                  'seasonYear': 2019,
+                  'format': 'TV',
+                  'episodes': 26,
+                  'status': 'FINISHED',
+                },
+              },
+            }),
+            200,
+          );
+        }
+        if (url.contains('/ajax/anime/search')) {
+          return http.Response.bytes(
+            utf8.encode(fixture('animekai_ds_search.json')),
+            200,
+          );
+        }
+        if (url.contains('/filter?keyword=')) {
+          return http.Response.bytes(
+            utf8.encode(fixture('animekai_filter_demon.html')),
+            200,
+          );
+        }
+        if (url.contains('/anime/demon-slayer-kimetsu-no-yaiba-7bldim')) {
+          return http.Response.bytes(
+            utf8.encode(fixture('animekai_ds_anime_page.html')),
+            200,
+          );
+        }
+        if (url.contains('/ajax/episode/list/8084')) {
+          return http.Response.bytes(
+            utf8.encode(fixture('animekai_ds_episodes.json')),
+            200,
+          );
+        }
+        if (url.contains('/ajax/server/list')) {
+          return http.Response.bytes(
+            utf8.encode(fixture('animekai_ds_servers.json')),
+            200,
+          );
+        }
+        if (url.contains('/ajax/server?get=')) {
+          return http.Response(
+            jsonEncode(<String, Object>{
+              'status': 200,
+              'result': <String, Object?>{
+                'url': 'https://megaplay.buzz/stream/s-2/1279/sub',
+                'type': 'iframe',
+                'skip_data': null,
+              },
+            }),
+            200,
+          );
+        }
+        if (url == 'https://megaplay.buzz/stream/s-2/1279/sub') {
+          return http.Response.bytes(
+            utf8.encode(fixture('animekai_ds_megaplay_embed.html')),
+            200,
+          );
+        }
+        if (url.contains('/stream/getSources?id=40156&type=sub')) {
+          return http.Response.bytes(
+            utf8.encode(fixture('animekai_ds_getsources.json')),
+            200,
+          );
+        }
+        if (url.contains('fetch.nexabloom.top') &&
+            url.contains('master.m3u8')) {
+          return http.Response(
+            '#EXTM3U\n'
+            '#EXT-X-STREAM-INF:BANDWIDTH=2153379,RESOLUTION=1920x1080,'
+            'CODECS="avc1.640032,mp4a.40.2"\n'
+            'index-f1-v1-a1.m3u8\n',
+            200,
+          );
+        }
+        return http.Response('not found', 404);
+      });
+      final AnimeKaiResolver resolver = AnimeKaiResolver(
+        client: client,
+        anilist: AniListService(client: client),
+      );
+      final ResolvedStream? stream = await resolver.resolve(
+        anime: demonSlayer,
+        episodeNumber: 1,
+        subDub: 'Sub',
+      );
+      expect(stream, isNotNull);
+      expect(stream!.url, contains('index-f1-v1-a1.m3u8'));
+      expect(stream.source, 'AnimeKai');
+      expect(stream.label, 'AnimeKai HD Sub');
+      expect(stream.variants, hasLength(1));
+      // English + Portuguese + Spanish; the 'thumbnails' track is
+      // not a subtitle.
+      expect(stream.subtitles.length, 3);
+      expect(stream.subtitles.first.label, 'English');
+    });
+  });
 }

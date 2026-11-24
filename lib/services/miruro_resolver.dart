@@ -682,6 +682,25 @@ class MiruroResolver {
     }
   }
 
+  /// Resolve one megaplay embed URL to a playable stream. Public
+  /// so the AnimeKai resolver can reuse it — some AnimeKai titles
+  /// serve megaplay embeds instead of megavid (e.g. Demon Slayer
+  /// EP1 sub: `megaplay.buzz/stream/s-2/1279/sub`), and the
+  /// megaplay chain (getSources -> AES decrypt -> signed master)
+  /// lives here, in one place. [watchUrl] is the Referer for the
+  /// embed-page fetch (the AnimeKai anime page). The returned
+  /// stream carries Miruro's label/source — callers re-label it.
+  Future<ResolvedStream?> resolveMegaplayEmbed({
+    required String embedUrl,
+    required String subDub,
+    String? watchUrl,
+  }) =>
+      _resolveMegaplayEmbed(
+        embedUrl,
+        watchUrl ?? embedUrl,
+        subDub == 'Dub' ? 'DUB' : 'SUB',
+      );
+
   /// Resolve one megaplay embed URL: getSources THEN getSourcesNew,
   /// "sources" first else AES-decrypted "enc" -> master -> sign ->
   /// expand into quality variants.

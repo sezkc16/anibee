@@ -4755,7 +4755,7 @@ class _ErrorState extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               const Text(
-                'Trailer unavailable',
+                "Couldn't load episode",
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 18,

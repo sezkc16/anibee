@@ -12,14 +12,26 @@ import 'miruro_resolver.dart';
 ///
 /// Chain: AniList id -> title variants -> `GET /ajax/anime/search`
 /// (JSON `{status, result:{html}}` — classic AnimeKai suggestion
-/// list) -> title/year/format match -> `GET /anime/<slug>` (the
-/// anime id from `data-id="…" data-fetch="true"`) ->
+/// list, 5 hits) -> title/year/format match -> `GET /anime/<slug>`
+/// (the anime id from `data-id="…" data-fetch="true"`) ->
 /// `GET /ajax/episode/list/<ani_id>` (`data-num` / `data-ids`
 /// tokens) -> `GET /ajax/server/list?servers=<token>` (Sub/Dub
 /// server buttons, `data-link-id` tokens) ->
 /// `GET /ajax/server?get=<token>` (embed URL) -> megavid embed
 /// (`#player-payload` JSON -> `/mal/<id>/<ep>/<sub|dub>/source`)
 /// -> signed HLS master URL + English subtitle tracks.
+///
+/// Search notes (live, 2026-11-24): the site appends "(TV)" to
+/// some display titles ("Jujutsu Kaisen (TV)") — the matcher
+/// strips parenthetical qualifiers before comparing, or an exact
+/// match scores 0.667 and is rejected. The suggestion endpoint
+/// caps at 5 hits and big franchises crowd out their own base
+/// series (plain "Demon Slayer: Kimetsu no Yaiba" never appears
+/// for any "demon slayer" query) — when suggestions yield no
+/// confident match, the resolver falls back to the full filter
+/// page (`GET /filter?keyword=…`, the site's own search form
+/// target), which does list the base series (page 1, type but
+/// no year in its info block).
 ///
 /// The ORIGINAL AnimeKai shut down May 10, 2026 (animekai.to is a
 /// parking page) — animekai.ro is a different domain, a revival /
@@ -40,15 +52,25 @@ import 'miruro_resolver.dart';
 /// `https://megavid.buzz/`) because the default receiver cannot
 /// send a Referer.
 class AnimeKaiResolver {
-  AnimeKaiResolver({http.Client? client, AniListService? anilist})
-    : _client = client ?? http.Client(),
-      _anilist = anilist ?? AniListService();
+  AnimeKaiResolver({
+    http.Client? client,
+    AniListService? anilist,
+    MiruroResolver? megaplay,
+  })  : _client = client ?? http.Client(),
+        _anilist = anilist ?? AniListService(),
+        _megaplay = megaplay ?? MiruroResolver(client: client);
 
   final http.Client _client;
   final AniListService _anilist;
 
+  /// Owns the megaplay embed chain (getSources -> AES decrypt ->
+  /// signed master). Shares the caller's [http.Client] when one is
+  /// injected (tests), so mock clients see its requests too.
+  final MiruroResolver _megaplay;
+
   static const String _base = 'https://animekai.ro';
   static const String _megavidHost = 'megavid.buzz';
+  static const String _megaplayHost = 'megaplay.buzz';
   static const String _ua =
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
       '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -131,8 +153,33 @@ class AnimeKaiResolver {
         if (embedUrl == null) continue;
         final Uri? embedUri = Uri.tryParse(embedUrl);
         if (embedUri == null) continue;
-        if (embedUri.host.toLowerCase() != _megavidHost &&
-            !embedUri.host.toLowerCase().endsWith('.$_megavidHost')) {
+        final String host = embedUri.host.toLowerCase();
+        final bool isMegavid = host == _megavidHost ||
+            host.endsWith('.$_megavidHost');
+        final bool isMegaplay =
+            host == _megaplayHost || host.endsWith('.$_megaplayHost');
+        if (isMegaplay) {
+          // Some titles serve megaplay embeds instead of megavid
+          // (Demon Slayer EP1: megaplay.buzz/stream/s-2/1279/sub).
+          // The megaplay chain lives in MiruroResolver — reuse it
+          // rather than duplicating the decrypt/sign logic.
+          final ResolvedStream? mega =
+              await _megaplay.resolveMegaplayEmbed(
+            embedUrl: embedUrl,
+            subDub: subDub,
+            watchUrl: '$_base/anime/${match.slug}',
+          );
+          if (mega == null) continue;
+          return ResolvedStream(
+            url: mega.url,
+            label: 'AnimeKai ${server.name} $subDub',
+            source: 'AnimeKai',
+            headers: mega.headers,
+            variants: mega.variants,
+            subtitles: mega.subtitles,
+          );
+        }
+        if (!isMegavid) {
           // Another embed host — its extraction is not verified;
           // skip it rather than guessing.
           continue;
@@ -165,6 +212,14 @@ class AnimeKaiResolver {
   /// Search AnimeKai for each title variant (romaji first) and pick
   /// the best-scoring series. Null + [lastError] when nothing is
   /// confident enough — never a guess.
+  ///
+  /// Two search paths: the suggestion endpoint
+  /// (`/ajax/anime/search`, 5 hits — the base series of a big
+  /// franchise often does NOT surface there, e.g. plain "Demon
+  /// Slayer: Kimetsu no Yaiba" is crowded out by its movies/arcs)
+  /// and, when that yields no confident match, the full filter
+  /// page (`/filter?keyword=…`, page 1 — the site's own search
+  /// form target, 14+ hits, type but no year in its info block).
   Future<AnimeKaiCandidate?> _matchSeries({
     required List<String> titles,
     required int? year,
@@ -184,13 +239,55 @@ class AnimeKaiResolver {
       // An exact title hit on the first query is enough — the
       // remaining variants only add duplicates.
       if (found.values.any(
-        (c) => normalizeTitle(c.title) == normalizeTitle(titles.first),
+        (c) =>
+            _plainTitle(c.title) == _plainTitle(titles.first),
       )) {
         break;
       }
     }
+    AnimeKaiCandidate? confident = _bestMatch(
+      found.values,
+      titles: titles,
+      year: year,
+      format: format,
+    );
+    if (confident == null && titles.first.trim().isNotEmpty) {
+      // Suggestion search came up empty-handed — try the full
+      // filter page once with the first title variant.
+      try {
+        for (final AnimeKaiCandidate c in await _filterSearch(
+          titles.first,
+        )) {
+          found.putIfAbsent(c.slug, () => c);
+        }
+        confident = _bestMatch(
+          found.values,
+          titles: titles,
+          year: year,
+          format: format,
+        );
+      } catch (_) {
+        // Filter failure keeps the suggestion result (none).
+      }
+    }
+    if (confident == null) {
+      lastError = 'Could not find "${titles.last}" on AnimeKai.';
+      return null;
+    }
+    return confident;
+  }
+
+  /// Best-scoring candidate over [candidates], or null when none is
+  /// confident enough (floor + runner-up margin). Pure scoring —
+  /// the search itself stays in [_matchSeries].
+  AnimeKaiCandidate? _bestMatch(
+    Iterable<AnimeKaiCandidate> candidates, {
+    required List<String> titles,
+    required int? year,
+    required String? format,
+  }) {
     final List<_Scored> scored = <_Scored>[];
-    for (final AnimeKaiCandidate c in found.values) {
+    for (final AnimeKaiCandidate c in candidates) {
       final _Scored? s = _scoreCandidate(
         c,
         titles: titles,
@@ -200,15 +297,11 @@ class AnimeKaiResolver {
       if (s != null) scored.add(s);
     }
     scored.sort((a, b) => b.score.compareTo(a.score));
-    if (scored.isEmpty) {
-      lastError = 'Could not find "${titles.last}" on AnimeKai.';
-      return null;
-    }
+    if (scored.isEmpty) return null;
     final _Scored best = scored.first;
     final _Scored? runnerUp = scored.length > 1 ? scored[1] : null;
     if (best.score < kMinScore ||
         (runnerUp != null && best.score - runnerUp.score < 0.08)) {
-      lastError = 'Could not find "${titles.last}" on AnimeKai.';
       return null;
     }
     return best.candidate;
@@ -238,10 +331,87 @@ class AnimeKaiResolver {
     return parseSearchResults(html);
   }
 
-  /// Parse the search-suggestion HTML: one `a.aitem` per series
-  /// with the slug in its href, the title in `h6.title`, the
-  /// Japanese title in `data-jp`, the type in `.info b` and the
-  /// year in the last `.info span`. Pure — unit-tested.
+  /// The full search page (`/filter?keyword=…` — the site's own
+  /// search form target). Page 1 only; its info block carries the
+  /// type but no year, so those candidates score without a year
+  /// bonus and are never year-vetoed.
+  Future<List<AnimeKaiCandidate>> _filterSearch(String query) async {
+    final http.Response resp = await _client
+        .get(
+          Uri.parse(
+            '$_base/filter?keyword=${Uri.encodeQueryComponent(query)}',
+          ),
+          headers: _pageHeaders(),
+        )
+        .timeout(const Duration(seconds: 15));
+    if (resp.statusCode != 200) {
+      throw Exception('AnimeKai filter HTTP ${resp.statusCode}');
+    }
+    return parseFilterResults(resp.body);
+  }
+
+  /// Parse the full filter/search page: one `div.aitem` per series
+  /// with the slug + title in `a.title.d-title`, the Japanese title
+  /// in `data-jp`, the type in `.info span.type b`. No year on this
+  /// page (see [_filterSearch]). Pure — unit-tested.
+  static List<AnimeKaiCandidate> parseFilterResults(String html) {
+    final dom.Document doc = html_parser.parse(html);
+    final List<AnimeKaiCandidate> out = <AnimeKaiCandidate>[];
+    for (final dom.Element item in doc.querySelectorAll('div.aitem')) {
+      final dom.Element? titleEl = item.querySelector('a.title');
+      if (titleEl == null) continue;
+      final String href = titleEl.attributes['href'] ?? '';
+      final RegExpMatch? m =
+          RegExp(r'/anime/([a-z0-9-]+)/?$').firstMatch(href);
+      if (m == null) continue;
+      final String title = (titleEl.text).trim();
+      if (title.isEmpty) continue;
+      final String? jpTitle = titleEl.attributes['data-jp'];
+      final dom.Element? info = item.querySelector('.info');
+      String type = (info?.querySelector('span.type b')?.text ?? '')
+          .trim()
+          .toUpperCase();
+      if (type.isEmpty && info != null) {
+        // Fallback: a bare TV/MOVIE/SPECIAL/OVA/ONA token in the
+        // info text (never the first <b> — on this page that is
+        // the episode count).
+        final String infoText = info.text.toUpperCase();
+        for (final String t in <String>[
+          'TV',
+          'MOVIE',
+          'SPECIAL',
+          'OVA',
+          'ONA',
+        ]) {
+          if (RegExp('\\b$t\\b').hasMatch(infoText)) {
+            type = t;
+            break;
+          }
+        }
+      }
+      out.add(
+        AnimeKaiCandidate(
+          slug: m.group(1)!,
+          title: title,
+          jpTitle: (jpTitle ?? '').trim().isEmpty ? null : jpTitle!.trim(),
+          type: type,
+          year: null,
+        ),
+      );
+    }
+    return out;
+  }
+
+  /// A title with parenthetical qualifiers stripped
+  /// ("Jujutsu Kaisen (TV)" -> "jujutsu kaisen"): the site
+  /// disambiguates some series by appending "(TV)" / "(Dub)" to
+  /// the display title, and that extra token must not sink an
+  /// otherwise exact match. Pure — unit-tested.
+  static String _plainTitle(String raw) {
+    final String stripped =
+        raw.replaceAll(RegExp(r'\([^)]*\)'), ' ').trim();
+    return normalizeTitle(stripped);
+  }
   static List<AnimeKaiCandidate> parseSearchResults(String html) {
     final dom.Document doc = html_parser.parse(html);
     final List<AnimeKaiCandidate> out = <AnimeKaiCandidate>[];
@@ -316,10 +486,10 @@ class AnimeKaiResolver {
       if (c.jpTitle != null) c.jpTitle!,
     ];
     for (final String a in titles) {
-      final String na = normalizeTitle(a);
+      final String na = _plainTitle(a);
       if (na.isEmpty) continue;
       for (final String b in cTitles) {
-        final String nb = normalizeTitle(b);
+        final String nb = _plainTitle(b);
         if (nb.isEmpty) continue;
         if (na == nb) return 1.0;
         final Set<String> aw = na.split(' ').toSet();
