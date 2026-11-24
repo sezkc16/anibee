@@ -1407,7 +1407,7 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
     // 0.2.19: PiP and Cast both take the video away from this
     // screen — one at a time. Casting already owns the stream.
     if (_casting) {
-      _snack('Cast chalu hai — pehle Cast band karo.');
+      _snack('Casting is on — stop casting first.');
       return;
     }
     final String? url = widget.trailer.url;
@@ -1590,20 +1590,20 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
   /// One short line the user sees when a Cast device cannot be
   /// reached (connection timeout, device gone).
   static const String _castConnectFailedMessage =
-      'TV se connect nahi hua — dobara try karo.';
+      'Could not connect to the TV — please try again.';
 
   /// One short line when the TV rejects the stream (expired signed
   /// link, referer-gated source).
   static const String _castLoadFailedMessage =
-      'TV pe nahi chala — ye link TV pe nahi khul raha.';
+      'Could not play on TV — this link does not open on the TV.';
 
   /// One short line when the current video cannot be cast at all
   /// (local download).
   static const String _castNotCastableMessage =
-      'Ye video TV pe nahi chalega.';
+      'This video cannot be played on TV.';
 
   /// One short line when the Cast button is tapped with no video.
-  static const String _castNoVideoMessage = 'Abhi koi video nahi chal raha.';
+  static const String _castNoVideoMessage = 'No video is playing right now.';
 
   /// Cast button tap: already casting → stop and resume local;
   /// connecting → ignore; otherwise check the stream can be cast
@@ -1660,7 +1660,7 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                 ),
                 const SizedBox(height: 4),
                 const Text(
-                  'TV aur phone same Wi-Fi pe hone chahiye.',
+                  'TV and phone must be on the same Wi-Fi.',
                   style: TextStyle(color: Colors.white54, fontSize: 13),
                 ),
                 const SizedBox(height: 12),
@@ -1678,7 +1678,7 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
                       if (devices.isEmpty) {
                         return const Center(
                           child: Text(
-                            'Koi Cast device nahi mila',
+                            'No Cast devices found',
                             style: TextStyle(
                               color: Colors.white70,
                               fontSize: 15,
@@ -1791,7 +1791,7 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
       _castDeviceName = _cast.connectedDeviceName;
       _castState = _cast.currentMediaState;
     });
-    _snack('TV pe chal raha hai');
+    _snack('Playing on TV');
     return true;
   }
 

@@ -177,7 +177,7 @@ void main() {
     expect(fake.loadCalls.first.position, Duration.zero);
     // Dismiss the "TV pe chal raha hai" banner: it sits over the
     // top bar and would swallow the next tap on the Cast button.
-    await tester.tap(find.text('TV pe chal raha hai'));
+    await tester.tap(find.text('Playing on TV'));
     await tester.pump();
   }
 
@@ -199,7 +199,7 @@ void main() {
     // The empty state is the EXPECTED sight on a Wi-Fi with no Cast
     // device — the user owns none (confirmed 2026-11-24).
     expect(find.text('Cast to TV'), findsWidgets);
-    expect(find.text('Koi Cast device nahi mila'), findsOneWidget);
+    expect(find.text('No Cast devices found'), findsOneWidget);
     expect(fake.discoveryStarted, isTrue);
     await flushTimers(tester);
   });
@@ -215,7 +215,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     expect(find.text('Living Room TV'), findsOneWidget);
     expect(find.text('Chromecast'), findsOneWidget);
-    expect(find.text('Koi Cast device nahi mila'), findsNothing);
+    expect(find.text('No Cast devices found'), findsNothing);
     await tester.tap(find.text('Living Room TV'));
     await settleRealTime(tester);
     await tester.pump();
@@ -227,7 +227,7 @@ void main() {
       find.byTooltip('Stop casting — Living Room TV'),
       findsOneWidget,
     );
-    expect(find.text('TV pe chal raha hai'), findsOneWidget);
+    expect(find.text('Playing on TV'), findsOneWidget);
     await flushTimers(tester);
   });
 
@@ -320,7 +320,7 @@ void main() {
     expect(playerState(tester).castingForTest, isFalse);
     expect(fake.disconnectCalls, 1);
     expect(
-      find.text('TV pe nahi chala — ye link TV pe nahi khul raha.'),
+      find.text('Could not play on TV — this link does not open on the TV.'),
       findsOneWidget,
     );
     await flushTimers(tester);
@@ -344,7 +344,7 @@ void main() {
     expect(playerState(tester).castingForTest, isFalse);
     expect(fake.loadCalls, isEmpty);
     expect(
-      find.text('TV se connect nahi hua — dobara try karo.'),
+      find.text('Could not connect to the TV — please try again.'),
       findsOneWidget,
     );
     await flushTimers(tester);
@@ -380,10 +380,10 @@ void main() {
     await tester.tap(find.byTooltip('Cast to TV'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
-    expect(find.text('Ye video TV pe nahi chalega.'), findsOneWidget);
+    expect(find.text('This video cannot be played on TV.'), findsOneWidget);
     // The picker never opened.
     expect(
-      find.text('TV aur phone same Wi-Fi pe hone chahiye'),
+      find.text('TV and phone must be on the same Wi-Fi'),
       findsNothing,
     );
     expect(fake.discoveryStarted, isFalse);
@@ -396,9 +396,9 @@ void main() {
     await tester.tap(find.byTooltip('Cast to TV'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
-    expect(find.text('Abhi koi video nahi chal raha.'), findsOneWidget);
+    expect(find.text('No video is playing right now.'), findsOneWidget);
     expect(
-      find.text('TV aur phone same Wi-Fi pe hone chahiye'),
+      find.text('TV and phone must be on the same Wi-Fi'),
       findsNothing,
     );
     await flushTimers(tester);
