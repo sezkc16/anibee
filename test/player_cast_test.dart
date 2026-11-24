@@ -351,6 +351,63 @@ void main() {
     await flushTimers(tester);
   });
 
+  testWidgets('receiver stuck in loading never flips into remote mode',
+      (WidgetTester tester) async {
+    await pumpPlayer(tester);
+    fake.loadStuckInLoading = true;
+    fake.devicesValue = <CastDevice>[
+      const CastDevice(id: 'tv-1', name: 'Living Room TV'),
+    ];
+    await tester.tap(find.byTooltip('Cast to TV'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.text('Living Room TV'));
+    // The receiver reports loading but never starts: the 10 s
+    // verdict window passes with no playing/paused verdict.
+    await tester.pump(const Duration(seconds: 11));
+    await tester.pump();
+    // Still local: no remote mode, load-failed line, disconnected.
+    expect(playerState(tester).castingForTest, isFalse);
+    expect(fake.disconnectCalls, 1);
+    expect(
+      find.text('Could not play on TV — this link does not open on the TV.'),
+      findsOneWidget,
+    );
+    await flushTimers(tester);
+  });
+
+  testWidgets('TV going idle+error ends the cast and resumes local',
+      (WidgetTester tester) async {
+    await pumpPlayer(tester);
+    await startCasting(tester);
+    // The TV played to 90 s of a 24-minute episode, then gave up
+    // on the stream (idle + error — e.g. the signed HLS 403s when
+    // the receiver fetches it).
+    fake.emitMediaState(
+      const CastMediaState(
+        playing: false,
+        position: Duration(seconds: 90),
+        duration: Duration(minutes: 24),
+        volume: 1,
+        ended: false,
+        error: true,
+      ),
+    );
+    await tester.pump();
+    await settleRealTime(tester);
+    await tester.pump();
+    expect(playerState(tester).castingForTest, isFalse);
+    expect(fake.disconnectCalls, 1);
+    expect(
+      find.text('Could not play on TV — this link does not open on the TV.'),
+      findsOneWidget,
+    );
+    // Continue Watching / resume recorded the TV position (90 s).
+    await settleRealTime(tester);
+    expect(store.resumePositionFor(anime, 1), 90);
+    await flushTimers(tester);
+  });
+
   testWidgets('connect failure stays local with one short line',
       (WidgetTester tester) async {
     await pumpPlayer(tester);

@@ -78,6 +78,7 @@ class CastMediaState {
     required this.duration,
     required this.volume,
     required this.ended,
+    this.error = false,
   });
 
   /// True while the TV is playing (not paused/buffering/idle).
@@ -95,12 +96,19 @@ class CastMediaState {
   /// True when the TV finished the media (idle + finished).
   final bool ended;
 
+  /// True when the TV gave up on the media (idle + error — the
+  /// load failed or the stream died, e.g. a signed link the
+  /// receiver cannot fetch). The player ends the cast on this
+  /// (0.2.20) instead of sitting on a dead remote.
+  final bool error;
+
   CastMediaState copyWith({
     bool? playing,
     Duration? position,
     Duration? duration,
     double? volume,
     bool? ended,
+    bool? error,
   }) {
     return CastMediaState(
       playing: playing ?? this.playing,
@@ -108,6 +116,7 @@ class CastMediaState {
       duration: duration ?? this.duration,
       volume: volume ?? this.volume,
       ended: ended ?? this.ended,
+      error: error ?? this.error,
     );
   }
 }
@@ -221,6 +230,44 @@ abstract class CastService {
   Future<void> seek(Duration position);
   Future<void> setVolume(double volume);
   Future<void> setRate(double rate);
+}
+
+/// Verdict for one receiver media status, or null when it says
+/// nothing about the pending load yet. Statuses from the PREVIOUS
+/// media session (same session id as before the load) are ignored —
+/// right after a load the SDK still reports the old media.
+///
+/// 0.2.20: `loading`/`buffering` are NOT a verdict. The iOS
+/// loadMedia channel call is fire-and-forget and the receiver
+/// reports `loading` almost immediately for a load it can never
+/// play (e.g. a signed/referer-gated HLS the receiver fetches
+/// directly) — accepting it instantly flipped the screen into
+/// remote mode with a dead TV and a dead center button
+/// (phone-proven 2026-11-24). Only `playing`/`paused` prove the
+/// TV started; `idle` + error proves it failed. Pure — unit-tested.
+bool? castLoadVerdict(
+  GoggleCastMediaStatus? status,
+  int? previousSessionId,
+) {
+  if (status == null) return null;
+  if (previousSessionId != null &&
+      status.mediaSessionID == previousSessionId) {
+    return null;
+  }
+  switch (status.playerState) {
+    case CastMediaPlayerState.loading:
+    case CastMediaPlayerState.buffering:
+      return null;
+    case CastMediaPlayerState.playing:
+    case CastMediaPlayerState.paused:
+      return true;
+    case CastMediaPlayerState.idle:
+      return status.idleReason == GoogleCastMediaIdleReason.error
+          ? false
+          : null;
+    case CastMediaPlayerState.unknown:
+      return null;
+  }
 }
 
 /// Real [CastService] over flutter_chrome_cast 1.2.9 (Google Cast
@@ -387,6 +434,9 @@ class GoogleCastService implements CastService {
     final bool ended =
         status?.playerState == CastMediaPlayerState.idle &&
         status?.idleReason == GoogleCastMediaIdleReason.finished;
+    final bool error =
+        status?.playerState == CastMediaPlayerState.idle &&
+        status?.idleReason == GoogleCastMediaIdleReason.error;
     final double volume = (status?.volume ?? 1).toDouble().clamp(0.0, 1.0);
     return CastMediaState(
       playing: playing,
@@ -394,6 +444,7 @@ class GoogleCastService implements CastService {
       duration: duration,
       volume: volume,
       ended: ended,
+      error: error,
     );
   }
 
@@ -470,33 +521,8 @@ class GoogleCastService implements CastService {
     if (!accepted) throw const CastException('load-failed');
   }
 
-  /// Verdict for one media status, or null when it says nothing
-  /// about the pending load yet. Statuses from the PREVIOUS media
-  /// session (same session id as before the load) are ignored —
-  /// right after a load the SDK still reports the old media.
-  bool? _verdictOf(GoggleCastMediaStatus? status, int? previousSessionId) {
-    if (status == null) return null;
-    if (previousSessionId != null &&
-        status.mediaSessionID == previousSessionId) {
-      return null;
-    }
-    switch (status.playerState) {
-      case CastMediaPlayerState.loading:
-      case CastMediaPlayerState.buffering:
-      case CastMediaPlayerState.playing:
-      case CastMediaPlayerState.paused:
-        return true;
-      case CastMediaPlayerState.idle:
-        return status.idleReason == GoogleCastMediaIdleReason.error
-            ? false
-            : null;
-      case CastMediaPlayerState.unknown:
-        return null;
-    }
-  }
-
   Future<bool> _waitForLoadVerdict(int? previousSessionId) async {
-    final bool? now = _verdictOf(
+    final bool? now = castLoadVerdict(
       GoogleCastRemoteMediaClient.instance.mediaStatus,
       previousSessionId,
     );
@@ -505,7 +531,7 @@ class GoogleCastService implements CastService {
     late StreamSubscription<GoggleCastMediaStatus?> sub;
     sub = GoogleCastRemoteMediaClient.instance.mediaStatusStream.listen(
       (GoggleCastMediaStatus? status) {
-        final bool? verdict = _verdictOf(status, previousSessionId);
+        final bool? verdict = castLoadVerdict(status, previousSessionId);
         if (verdict != null && !completer.isCompleted) {
           completer.complete(verdict);
         }

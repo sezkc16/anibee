@@ -1931,6 +1931,13 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
       setState(() => _castState = state);
       if (state.ended && _casting && !_castEndHandled) {
         unawaited(_endCastAndResumeLocal(fromTvEnd: true));
+      } else if (state.error && _casting && !_castEndHandled) {
+        // 0.2.20: the TV gave up on the media (idle + error — e.g.
+        // the signed/referer-gated HLS 403s when the receiver
+        // fetches it). End the cast, resume local, say so — never
+        // sit with a dead remote and a dead center button.
+        _snack(_castLoadFailedMessage);
+        unawaited(_endCastAndResumeLocal());
       }
     });
   }

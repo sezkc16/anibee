@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:anibee/services/cast_service.dart';
+import 'package:flutter_chrome_cast/flutter_chrome_cast.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// 0.2.19: Chromecast — the pure helpers the player screen relies
@@ -161,6 +162,105 @@ void main() {
       await fake.disconnect();
     });
   });
+
+  group('castLoadVerdict (0.2.20)', () {
+    GoggleCastMediaStatus status(
+      CastMediaPlayerState state, {
+      GoogleCastMediaIdleReason? reason,
+      int sessionId = 7,
+    }) {
+      return GoggleCastMediaStatus(
+        mediaSessionID: sessionId,
+        playerState: state,
+        idleReason: reason,
+        playbackRate: 1,
+        volume: 1,
+        isMuted: false,
+        repeatMode: GoogleCastMediaRepeatMode.off,
+      );
+    }
+
+    test('loading and buffering are NOT a verdict — keep waiting', () {
+      expect(
+        castLoadVerdict(status(CastMediaPlayerState.loading), null),
+        isNull,
+      );
+      expect(
+        castLoadVerdict(status(CastMediaPlayerState.buffering), null),
+        isNull,
+      );
+    });
+
+    test('playing and paused prove the TV started', () {
+      expect(
+        castLoadVerdict(status(CastMediaPlayerState.playing), null),
+        isTrue,
+      );
+      expect(
+        castLoadVerdict(status(CastMediaPlayerState.paused), null),
+        isTrue,
+      );
+    });
+
+    test('idle + error fails the load; other idle reasons say nothing',
+        () {
+      expect(
+        castLoadVerdict(
+          status(
+            CastMediaPlayerState.idle,
+            reason: GoogleCastMediaIdleReason.error,
+          ),
+          null,
+        ),
+        isFalse,
+      );
+      expect(
+        castLoadVerdict(
+          status(
+            CastMediaPlayerState.idle,
+            reason: GoogleCastMediaIdleReason.finished,
+          ),
+          null,
+        ),
+        isNull,
+      );
+      expect(
+        castLoadVerdict(
+          status(
+            CastMediaPlayerState.idle,
+            reason: GoogleCastMediaIdleReason.none,
+          ),
+          null,
+        ),
+        isNull,
+      );
+    });
+
+    test('unknown and null statuses say nothing', () {
+      expect(
+        castLoadVerdict(status(CastMediaPlayerState.unknown), null),
+        isNull,
+      );
+      expect(castLoadVerdict(null, null), isNull);
+    });
+
+    test('a status from the previous session is ignored', () {
+      expect(
+        castLoadVerdict(
+          status(CastMediaPlayerState.playing, sessionId: 7),
+          7,
+        ),
+        isNull,
+      );
+      expect(
+        castLoadVerdict(
+          status(CastMediaPlayerState.playing, sessionId: 8),
+          7,
+        ),
+        isTrue,
+      );
+    });
+  });
 }
 
 /// Scripted [CastService] for the player widget tests. Records
@@ -177,6 +277,7 @@ class FakeCastService implements CastService {
   List<CastDevice> devicesValue = <CastDevice>[];
   bool connectResult = true;
   bool loadShouldThrow = false;
+  bool loadStuckInLoading = false;
   bool discoveryStarted = false;
   bool _connected = false;
   CastMediaState _state = const CastMediaState(
@@ -278,6 +379,21 @@ class FakeCastService implements CastService {
   }) async {
     if (loadShouldThrow) throw const CastException('load-failed');
     loadCalls.add((url: url, position: position));
+    if (loadStuckInLoading) {
+      // Mirror the real service's verdict wait (0.2.20): the
+      // receiver reports loading but never starts — after the 10 s
+      // window the load fails instead of flipping into remote mode.
+      _state = const CastMediaState(
+        playing: false,
+        position: Duration.zero,
+        duration: Duration.zero,
+        volume: 1,
+        ended: false,
+      );
+      _mediaController.add(_state);
+      await Future<void>.delayed(const Duration(seconds: 10));
+      throw const CastException('load-failed');
+    }
     _state = CastMediaState(
       playing: true,
       position: position,
