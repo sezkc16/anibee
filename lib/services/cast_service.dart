@@ -25,12 +25,17 @@ import 'package:flutter_chrome_cast/flutter_chrome_cast.dart';
 ///   (only a custom receiver could read them from `customData`).
 ///   A failed TV load is caught here (see [GoogleCastService]
 ///   — the iOS `loadMedia` channel call is fire-and-forget) and
-///   surfaces as one short Hinglish line, never a raw error.
+///   surfaces as one short line, never a raw error.
 /// - Local files (downloaded episodes, `file://`) cannot be cast:
 ///   the TV has no access to the phone's storage.
-/// - No real Cast device exists on the VM/CI, and the user owns no
-///   Cast device (confirmed 2026-11-24) — real casting is
-///   phone-test only, once he has a device. Widget tests drive
+/// - No real Cast device exists on the VM/CI. The user owns a
+///   DishHome 4K Streamer (Chromecast built-in) — real casting is
+///   phone-test only. A discovery bug was phone-proven 2026-11-24:
+///   the stick is visible to official YouTube on the same iPhone
+///   but AniBee 0.2.19 showed nothing (see the picker note in
+///   full_player_screen.dart — the 1.2.9 plugin's iOS discovery
+///   handler is empty and the plugin stops discovery on
+///   backgrounding with no restart path).
 ///   this through the injectable [CastService] (a mock), the same
 ///   pattern as the update checker's injectable client.
 ///
@@ -108,8 +113,7 @@ class CastMediaState {
 }
 
 /// A Cast failure. [message] is a short safe code, never a raw
-/// platform error — the player screen maps it to one plain Hinglish
-/// line; the raw error goes to debugPrint only.
+/// platform error — the player screen maps it to one plain line; the raw error goes to debugPrint only.
 class CastException implements Exception {
   const CastException(this.message);
 
@@ -161,6 +165,14 @@ abstract class CastService {
   List<CastDevice> get currentDevices;
 
   /// Start device discovery (call while the picker is open).
+  /// NOTE (0.2.20): on iOS with flutter_chrome_cast 1.2.9 this is
+  /// a no-op — the plugin's native discovery method-channel
+  /// handler is empty and never reaches GCKDiscoveryManager.
+  /// Discovery actually starts inside [ensureInitialized] (the
+  /// native context setup calls startDiscovery) and the plugin
+  /// stops it on every app-backgrounding with no restart path, so
+  /// the app inits Cast when the player opens and the picker reads
+  /// the cached list ([currentDevices] / the replaying stream).
   Future<void> startDiscovery();
 
   /// Stop device discovery (call when the picker closes).

@@ -225,6 +225,13 @@ class FakeCastService implements CastService {
     _devicesController.add(List<CastDevice>.of(devicesValue));
   }
 
+  /// Push a device list into the discovery stream (late arrival —
+  /// a device found after the picker is already open). 0.2.20.
+  void emitDevices(List<CastDevice> devices) {
+    devicesValue = List<CastDevice>.of(devices);
+    _devicesController.add(List<CastDevice>.of(devices));
+  }
+
   @override
   Future<void> stopDiscovery() async {
     discoveryStarted = false;

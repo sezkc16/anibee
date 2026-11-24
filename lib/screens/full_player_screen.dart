@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:anibee_mpv_pip/anibee_mpv_pip.dart';
 import 'package:file_picker/file_picker.dart';
@@ -508,6 +509,13 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
     unawaited(widget.trailer.expandToFull());
     unawaited(widget.trailer.applyHwdec(_store.hwDecoding));
     _applySubtitlePipeline();
+    // 0.2.20: start Cast discovery when the player opens, not at
+    // picker-open. flutter_chrome_cast 1.2.9's iOS startDiscovery is
+    // a no-op (its native method-channel handler is empty) and the
+    // plugin stops discovery on every app-backgrounding with no
+    // restart path — so discovery must get its head start in the
+    // foreground, and the picker reads the cached device list.
+    unawaited(_initCastEarly());
     // M2: load the resolved real stream (unmuted) once the surface
     // is ours; the trailer path loads nothing extra.
     if (widget.stream != null) {
@@ -1605,6 +1613,17 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
   /// One short line when the Cast button is tapped with no video.
   static const String _castNoVideoMessage = 'No video is playing right now.';
 
+  /// Best-effort early Cast init (0.2.20): never throws, never
+  /// blocks the player — a failed init just means the picker-open
+  /// init reports it then.
+  Future<void> _initCastEarly() async {
+    try {
+      await _cast.ensureInitialized();
+    } on CastException catch (e) {
+      debugPrint('Anibee Cast early init failed: $e');
+    }
+  }
+
   /// Cast button tap: already casting → stop and resume local;
   /// connecting → ignore; otherwise check the stream can be cast
   /// and open the device picker.
@@ -1627,10 +1646,25 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
     _showCastPicker();
   }
 
-  /// Device picker: dark bottom sheet (same style as the volume
-  /// sheet). Discovery runs while it is open and stops when it
-  /// closes. The empty state is the expected sight on a Wi-Fi with
-  /// no Cast device — the user owns none (confirmed 2026-11-24).
+  /// Device picker (0.2.20): frosted dark-glass sheet (same glass
+  /// pattern as the nav pill — BackdropFilter blur + thin light
+  /// border), drag-handle pill straddling the top edge, compact
+  /// content-sized height. Discovery runs while it is open. The
+  /// empty state first shows 'Searching…' while discovery is still
+  /// running, then 'No Cast devices found' — the two must never be
+  /// confused.
+  ///
+  /// Discovery note (0.2.20, phone-proven 2026-11-24): the user's
+  /// DishHome stick is visible to official YouTube on the same
+  /// iPhone, but AniBee 0.2.19 showed nothing. Root cause, from the
+  /// flutter_chrome_cast 1.2.9 plugin source: its iOS discovery
+  /// method-channel handler is EMPTY — Dart start/stopDiscovery are
+  /// no-ops that never reach GCKDiscoveryManager — and the plugin
+  /// stops discovery on every app-backgrounding with no restart
+  /// path. The app therefore starts Cast discovery when the player
+  /// opens (see initState) and the picker reads the cached device
+  /// list; the Dart devices stream itself replays fine
+  /// (BehaviorSubject) and the plist/permission are correct.
   Future<void> _showCastPicker() async {
     final CastService cast = _cast;
     await cast.ensureInitialized();
@@ -1638,83 +1672,142 @@ class _FullPlayerScreenState extends State<FullPlayerScreen> {
     unawaited(cast.startDiscovery());
     await showModalBottomSheet<void>(
       context: context,
-      backgroundColor: const Color(0xFF17171F),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      backgroundColor: Colors.transparent,
       builder: (BuildContext context) {
         return SafeArea(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+            child: Stack(
+              clipBehavior: Clip.none,
               children: <Widget>[
-                const Text(
-                  'Cast to TV',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w800,
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(28),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color:
+                            const Color(0xFF23262F).withValues(alpha: 0.55),
+                        borderRadius: BorderRadius.circular(28),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.25),
+                        ),
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: <Color>[
+                            Colors.white.withValues(alpha: 0.08),
+                            Colors.white.withValues(alpha: 0.0),
+                          ],
+                        ),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            const Text(
+                              'Cast to TV',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            const Text(
+                              'TV and phone must be on the same Wi-Fi.',
+                              style: TextStyle(
+                                color: Colors.white54,
+                                fontSize: 13,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            StreamBuilder<List<CastDevice>>(
+                              stream: cast.devices,
+                              initialData: cast.currentDevices,
+                              builder: (
+                                BuildContext context,
+                                AsyncSnapshot<List<CastDevice>> snapshot,
+                              ) {
+                                final List<CastDevice> devices =
+                                    snapshot.data ?? const <CastDevice>[];
+                                if (devices.isEmpty) {
+                                  return const Center(
+                                    child: _CastPickerEmptyState(),
+                                  );
+                                }
+                                return ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    maxHeight: 300,
+                                  ),
+                                  child: ListView.builder(
+                                    shrinkWrap: true,
+                                    padding: EdgeInsets.zero,
+                                    itemCount: devices.length,
+                                    itemBuilder:
+                                        (BuildContext context, int index) {
+                                      final CastDevice device =
+                                          devices[index];
+                                      // Transparent Material: the glass
+                                      // Container is a DecoratedBox with a
+                                      // background color, so without this
+                                      // the ListTile ink splashes would be
+                                      // hidden (and Flutter asserts).
+                                      return Material(
+                                        color: Colors.transparent,
+                                        child: ListTile(
+                                          contentPadding: EdgeInsets.zero,
+                                          leading: const Icon(
+                                            Icons.cast_rounded,
+                                            color: Colors.white70,
+                                          ),
+                                          title: Text(
+                                            device.name,
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                          subtitle: device.model == null
+                                              ? null
+                                              : Text(
+                                                  device.model!,
+                                                  style: const TextStyle(
+                                                    color: Colors.white54,
+                                                  ),
+                                                ),
+                                          onTap: () {
+                                            Navigator.of(context).pop();
+                                            unawaited(_connectAndCast(device));
+                                          },
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 4),
-                const Text(
-                  'TV and phone must be on the same Wi-Fi.',
-                  style: TextStyle(color: Colors.white54, fontSize: 13),
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  height: 240,
-                  child: StreamBuilder<List<CastDevice>>(
-                    stream: cast.devices,
-                    initialData: cast.currentDevices,
-                    builder: (
-                      BuildContext context,
-                      AsyncSnapshot<List<CastDevice>> snapshot,
-                    ) {
-                      final List<CastDevice> devices =
-                          snapshot.data ?? const <CastDevice>[];
-                      if (devices.isEmpty) {
-                        return const Center(
-                          child: Text(
-                            'No Cast devices found',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 15,
-                            ),
-                          ),
-                        );
-                      }
-                      return ListView.builder(
-                        itemCount: devices.length,
-                        itemBuilder: (BuildContext context, int index) {
-                          final CastDevice device = devices[index];
-                          return ListTile(
-                            leading: const Icon(
-                              Icons.cast_rounded,
-                              color: Colors.white70,
-                            ),
-                            title: Text(
-                              device.name,
-                              style: const TextStyle(color: Colors.white),
-                            ),
-                            subtitle: device.model == null
-                                ? null
-                                : Text(
-                                    device.model!,
-                                    style: const TextStyle(
-                                      color: Colors.white54,
-                                    ),
-                                  ),
-                            onTap: () {
-                              Navigator.of(context).pop();
-                              unawaited(_connectAndCast(device));
-                            },
-                          );
-                        },
-                      );
-                    },
+                // Drag-handle pill straddling the sheet's top edge.
+                Positioned(
+                  top: -7,
+                  left: 0,
+                  right: 0,
+                  child: Center(
+                    child: Container(
+                      width: 40,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.35),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -4630,3 +4723,89 @@ class _EpisodeCell extends StatelessWidget {
 
 /// (The 0.2.10 single horizontal episode row was removed in 0.2.11:
 /// short anime now show Detail-style episode CARDS in the chooser.)
+
+/// Empty state of the Cast picker (0.2.20): while discovery is still
+/// running with no devices yet, a spinner + 'Searching…' — so
+/// "still looking" is distinguishable from "nothing found". After
+/// [kSearchWindow] with no device, the pink cast icon in a soft
+/// pink circle + 'No Cast devices found'.
+class _CastPickerEmptyState extends StatefulWidget {
+  const _CastPickerEmptyState();
+
+  static const Duration kSearchWindow = Duration(seconds: 8);
+
+  @override
+  State<_CastPickerEmptyState> createState() => _CastPickerEmptyStateState();
+}
+
+class _CastPickerEmptyStateState extends State<_CastPickerEmptyState> {
+  Timer? _timer;
+  bool _searchedLongEnough = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer(_CastPickerEmptyState.kSearchWindow, () {
+      if (mounted) setState(() => _searchedLongEnough = true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_searchedLongEnough) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 20),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Color(0xFFF06292),
+              ),
+            ),
+            SizedBox(width: 10),
+            Text(
+              'Searching…',
+              style: TextStyle(color: Colors.white70, fontSize: 15),
+            ),
+          ],
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: const Color(0xFFF06292).withValues(alpha: 0.18),
+            ),
+            child: const Icon(
+              Icons.cast_rounded,
+              color: Color(0xFFF06292),
+              size: 34,
+            ),
+          ),
+          const SizedBox(height: 14),
+          const Text(
+            'No Cast devices found',
+            style: TextStyle(color: Colors.white70, fontSize: 15),
+          ),
+        ],
+      ),
+    );
+  }
+}

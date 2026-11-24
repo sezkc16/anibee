@@ -196,11 +196,36 @@ void main() {
     await tester.tap(find.byTooltip('Cast to TV'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
-    // The empty state is the EXPECTED sight on a Wi-Fi with no Cast
-    // device — the user owns none (confirmed 2026-11-24).
+    // While discovery is still running, the picker says so —
+    // 'Searching…' — not 'No Cast devices found'.
     expect(find.text('Cast to TV'), findsWidgets);
-    expect(find.text('No Cast devices found'), findsOneWidget);
+    expect(find.text('Searching…'), findsOneWidget);
+    expect(find.text('No Cast devices found'), findsNothing);
     expect(fake.discoveryStarted, isTrue);
+    // After the 8 s search window with no device, the empty state
+    // is the pink icon + 'No Cast devices found'.
+    await tester.pump(const Duration(seconds: 9));
+    expect(find.text('No Cast devices found'), findsOneWidget);
+    await flushTimers(tester);
+  });
+
+  testWidgets('device found after the picker opens appears in the list',
+      (WidgetTester tester) async {
+    await pumpPlayer(tester);
+    await tester.tap(find.byTooltip('Cast to TV'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    // Nothing yet — still searching. This is the 0.2.19 bug: the
+    // picker never showed a device that arrived late.
+    expect(find.text('Searching…'), findsOneWidget);
+    // The stick answers discovery after the picker is already open.
+    fake.emitDevices(<CastDevice>[
+      const CastDevice(id: 'dishhome-1', name: 'DishHome Streamer'),
+    ]);
+    await tester.pump();
+    expect(find.text('DishHome Streamer'), findsOneWidget);
+    expect(find.text('Searching…'), findsNothing);
+    expect(find.text('No Cast devices found'), findsNothing);
     await flushTimers(tester);
   });
 
