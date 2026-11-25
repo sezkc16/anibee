@@ -7,7 +7,6 @@ import 'package:flutter/services.dart' show rootBundle;
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Remote fix system (user-approved 2026-11-23 01:28, "apne hisab se karo").
-///
 /// Provider definitions (domains, endpoints, mirrors) live in ONE public
 /// JSON — https://raw.githubusercontent.com/sezkc16/anibee-config/main/providers.json
 /// The app fetches it on launch and resolves from it. If a site's domain or
@@ -18,8 +17,22 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// `assets/providers.json` fallback. Big changes (full redesign, stricter
 /// Cloudflare) still need an app update — expected and fine.
 ///
-/// Built in: mirror rotation (try the next Miruro mirror on failure) and
-/// provider fallback (Miruro down -> next enabled provider).
+/// 0.2.29 — PERSONAL BUILD, remote config OFF: the user shut AniBee down
+/// for everyone else (2026-11-25 22:50, "bass merepe chale auro k pe
+/// nahi"), and the public providers.json is being killed. This build
+/// NEVER fetches the remote config and NEVER trusts the cached copy
+/// (it may already hold the killed config) — it loads ONLY the bundled
+/// `assets/providers.json` (v6: real mirrors + the real AniList/MAL
+/// OAuth client IDs), so his sources and logins keep working no matter
+/// what the public config becomes. Flip [_remoteConfigEnabled] to true
+/// to restore remote-config behaviour. NOTE for the shutdown: the
+/// resolvers' domains are hardcoded in Dart (Miruro/AniKoto/AniSuge/
+/// AniKage/Anime-Sama) and do NOT read this config — a killed remote
+/// config alone cannot stop sources on already-installed apps; it only
+/// kills new AniList/MAL logins (empty client IDs) and the Anime-Sama
+/// mirror override (which falls back to hardcoded anime-sama.to).
+/// Stopping other phones = repo private + releases deleted (no new
+/// installs, no update prompts), NOT the config.
 class ProviderConfigService extends ChangeNotifier {
   ProviderConfigService._(this._prefs);
 
@@ -27,6 +40,10 @@ class ProviderConfigService extends ChangeNotifier {
       'https://raw.githubusercontent.com/sezkc16/anibee-config/main/providers.json';
   static const String _cacheKey = 'provider_config_json';
   static const String _mirrorIndexKey = 'provider_mirror_index';
+
+  /// 0.2.29: false = personal build, bundled config only (see the
+  /// class doc). true restores the remote -> cached -> bundled chain.
+  static const bool _remoteConfigEnabled = false;
 
   final SharedPreferences _prefs;
 
@@ -53,44 +70,48 @@ class ProviderConfigService extends ChangeNotifier {
   }
 
   Future<void> _load() async {
-    // 1. Remote.
-    try {
-      final String? remote = await _fetchRemote().timeout(
-        const Duration(seconds: 5),
-      );
-      if (remote != null) {
-        final ProviderConfig parsed = ProviderConfig.fromJson(
-          jsonDecode(remote) as Map<String, dynamic>,
-        );
-        if (parsed.providers.isNotEmpty) {
-          _config = parsed;
-          _source = ConfigSource.remote;
-          await _prefs.setString(_cacheKey, remote);
-          notifyListeners();
-          return;
-        }
-      }
-    } catch (_) {
-      // Fall through to cache / bundled.
-    }
-    // 2. Last-good cached copy.
-    final String? cached = _prefs.getString(_cacheKey);
-    if (cached != null) {
+    // 1. Remote — skipped in the 0.2.29 personal build (see the class
+    // doc): the public config is shut down, so never fetch it.
+    if (_remoteConfigEnabled) {
       try {
-        final ProviderConfig parsed = ProviderConfig.fromJson(
-          jsonDecode(cached) as Map<String, dynamic>,
+        final String? remote = await _fetchRemote().timeout(
+          const Duration(seconds: 5),
         );
-        if (parsed.providers.isNotEmpty) {
-          _config = parsed;
-          _source = ConfigSource.cached;
-          notifyListeners();
-          return;
+        if (remote != null) {
+          final ProviderConfig parsed = ProviderConfig.fromJson(
+            jsonDecode(remote) as Map<String, dynamic>,
+          );
+          if (parsed.providers.isNotEmpty) {
+            _config = parsed;
+            _source = ConfigSource.remote;
+            await _prefs.setString(_cacheKey, remote);
+            notifyListeners();
+            return;
+          }
         }
       } catch (_) {
-        // Fall through to bundled.
+        // Fall through to cache / bundled.
+      }
+      // 2. Last-good cached copy — also skipped in the personal
+      // build: the cache may hold the killed public config.
+      final String? cached = _prefs.getString(_cacheKey);
+      if (cached != null) {
+        try {
+          final ProviderConfig parsed = ProviderConfig.fromJson(
+            jsonDecode(cached) as Map<String, dynamic>,
+          );
+          if (parsed.providers.isNotEmpty) {
+            _config = parsed;
+            _source = ConfigSource.cached;
+            notifyListeners();
+            return;
+          }
+        } catch (_) {
+          // Fall through to bundled.
+        }
       }
     }
-    // 3. Bundled fallback.
+    // 3. Bundled fallback — the ONLY source in the personal build.
     try {
       final String bundled = await rootBundle.loadString(
         'assets/providers.json',
