@@ -253,6 +253,13 @@ class _FullPlayerScreenState extends State<FullPlayerScreen>
   // in the last 3 s (HLS position jumps) or autoplay is off.
   StreamSubscription<bool>? _completedSub;
   bool _resumeApplied = false;
+  // 0.2.28: the open-time resume seek's target, so _onPosition can
+  // verify it stuck and re-seek once if the pre-load seek was
+  // dropped (same rule as the PiP path's seekNeedsRetry). Cleared
+  // on episode switch / reconnect, whose seeks are handled inline.
+  double? _resumeTarget;
+  DateTime? _resumeSeekAt;
+  bool _resumeSeekRetried = false;
   bool _autoplayShown = false;
   Timer? _autoplayTimer;
   int _autoplayCountdown = 5;
@@ -655,15 +662,45 @@ class _FullPlayerScreenState extends State<FullPlayerScreen>
         _currentEpisode.number,
       );
       if (saved != null && saved > 10 && saved < duration.inSeconds - 20) {
+        // 0.2.28: remember the target so the seek can be verified
+        // below, and stamp the progress-save clock NOW — the ticks
+        // arriving before this seek lands still report the pre-seek
+        // position, and the periodic save would otherwise overwrite
+        // the good resume value with ~0 on the first tick
+        // (_lastProgressSave starts at the epoch).
+        _resumeTarget = saved;
+        _resumeSeekAt = DateTime.now();
+        _resumeSeekRetried = false;
+        _lastProgressSave = DateTime.now();
         unawaited(_player.seek(Duration(seconds: saved.round())));
       }
     }
-    // Periodic progress save (Continue Watching + resume): every 30 s
-    // while playing, so a background kill / crash doesn't lose the
-    // position — dispose() alone was not enough.
-    if (_player.state.playing &&
+    // 0.2.28: verify the resume seek stuck — if the player is
+    // still near 0 a couple of seconds after the seek, the
+    // pre-load seek was dropped; re-issue it once.
+    if (_resumeTarget != null &&
+        !_resumeSeekRetried &&
+        _resumeSeekAt != null &&
+        DateTime.now().difference(_resumeSeekAt!).inSeconds >= 2 &&
+        seekNeedsRetry(
+          target: Duration(seconds: _resumeTarget!.round()),
+          position: position,
+        )) {
+      _resumeSeekRetried = true;
+      unawaited(_player.seek(Duration(seconds: _resumeTarget!.round())));
+    }
+    // Periodic progress save (Continue Watching + resume): every
+    // 10 s while playing, so a background kill / crash doesn't
+    // lose the position — dispose() alone was not enough.
+    // 0.2.28: 30 s -> 10 s (a killed app lost up to ~30 s of
+    // progress, and the HLS seek lands up to ~10 s early — the
+    // two stacked into the ~1 min behind the user reported), and
+    // never save before the resume seek has been applied: the
+    // pre-seek ticks report ~0 and would clobber the saved value.
+    if (_resumeApplied &&
+        _player.state.playing &&
         position.inSeconds > 5 &&
-        DateTime.now().difference(_lastProgressSave).inSeconds >= 30) {
+        DateTime.now().difference(_lastProgressSave).inSeconds >= 10) {
       _lastProgressSave = DateTime.now();
       _saveProgress();
     }
@@ -1324,6 +1361,12 @@ class _FullPlayerScreenState extends State<FullPlayerScreen>
   Future<void> _reconnectCurrentEpisode({bool forcePlay = false}) async {
     if (_reconnectInFlight || !mounted) return;
     _reconnectInFlight = true;
+    // 0.2.28: the reconnect seeks inline to resumeAt — drop any
+    // stale open-time resume target so _onPosition can't re-seek
+    // to it after the reload.
+    _resumeTarget = null;
+    _resumeSeekAt = null;
+    _resumeSeekRetried = false;
     // Capture the position before the dead stream is replaced.
     final Duration resumeAt = _player.state.position;
     final bool wasPlaying = forcePlay || _wasPlayingBeforeBackground;
@@ -1425,6 +1468,11 @@ class _FullPlayerScreenState extends State<FullPlayerScreen>
       _autoplayTimer = null;
       _completedPushEpisode = null;
       _resumeApplied = true; // resume handled inline below
+      // 0.2.28: drop any stale open-time resume target — the
+      // inline seek below owns the new episode's position.
+      _resumeTarget = null;
+      _resumeSeekAt = null;
+      _resumeSeekRetried = false;
     });
     widget.onEpisodeChanged?.call(episode);
     // 0.2.4: real AniSkip data for the new episode.
@@ -3258,6 +3306,12 @@ class _FullPlayerScreenState extends State<FullPlayerScreen>
     required Color accent,
     required ValueChanged<bool> onChanged,
   }) {
+    // 0.2.28: the knob must read as a knob. The old code set only
+    // activeThumbColor: accent, so ON was a green thumb on a green
+    // track — one flat green pill with no visible knob (user
+    // screenshot, 2026-11-25: "pura green chotasa"). Clean switch:
+    // white knob on the accent track when ON, white knob on a
+    // muted track when OFF.
     return SwitchListTile(
       contentPadding: const EdgeInsets.symmetric(horizontal: 16),
       title: Text(
@@ -3265,7 +3319,10 @@ class _FullPlayerScreenState extends State<FullPlayerScreen>
         style: const TextStyle(color: Colors.white, fontSize: 14),
       ),
       value: value,
-      activeThumbColor: accent,
+      activeThumbColor: Colors.white,
+      activeTrackColor: accent,
+      inactiveThumbColor: Colors.white,
+      inactiveTrackColor: Colors.white24,
       onChanged: onChanged,
     );
   }
