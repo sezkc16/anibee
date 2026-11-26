@@ -178,17 +178,21 @@ class EpisodeCard extends StatelessWidget {
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              episode.synopsis,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: secondaryText,
-                                fontSize: 12,
-                                height: 1.35,
+                            // 0.2.31: no fake synopsis — when Kitsu has
+                            // none, the slot is hidden, not blank.
+                            if (episode.synopsis.isNotEmpty) ...<Widget>[
+                              const SizedBox(height: 4),
+                              Text(
+                                episode.synopsis,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: secondaryText,
+                                  fontSize: 12,
+                                  height: 1.35,
+                                ),
                               ),
-                            ),
+                            ],
                             const SizedBox(height: 6),
                             Row(
                               children: <Widget>[
@@ -198,14 +202,17 @@ class EpisodeCard extends StatelessWidget {
                                   color: secondaryText,
                                 ),
                                 const Spacer(),
-                                Text(
-                                  episode.airDate,
-                                  style: TextStyle(
-                                    color: secondaryText,
-                                    fontSize: 12,
+                                // 0.2.31: no fake air date either.
+                                if (episode.airDate.isNotEmpty) ...<Widget>[
+                                  Text(
+                                    episode.airDate,
+                                    style: TextStyle(
+                                      color: secondaryText,
+                                      fontSize: 12,
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(width: 2),
+                                  const SizedBox(width: 2),
+                                ],
                                 if (onToggleDownload != null)
                                   EpisodeDownloadButton(
                                     status: status,

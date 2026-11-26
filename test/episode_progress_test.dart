@@ -206,8 +206,10 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
 
-    // Sheet title is "Episode N · <title>" (mock ep 7 = Blood Moon Rising).
-    expect(find.text('Episode 7 · Blood Moon Rising'), findsOneWidget);
+    // Sheet title is "Episode N · <title>" with a real title; with
+    // the 0.2.31 honest placeholders the title IS 'Episode 7', so
+    // the header is just 'Episode 7' (no 'Episode 7 · Episode 7').
+    expect(find.text('Episode 7'), findsOneWidget);
     expect(find.text('Play'), findsOneWidget);
     expect(find.text('Download'), findsOneWidget);
 

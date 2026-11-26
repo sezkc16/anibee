@@ -530,7 +530,11 @@ class _EpisodeSectionState extends State<EpisodeSection> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
                 child: Text(
-                  'Episode ${ep.number} · ${ep.title}',
+                  // 0.2.31: the placeholder title IS 'Episode N' —
+                  // don't repeat it ('Episode 1 · Episode 1').
+                  ep.title == 'Episode ${ep.number}'
+                      ? 'Episode ${ep.number}'
+                      : 'Episode ${ep.number} · ${ep.title}',
                   style: TextStyle(
                     color: primaryText,
                     fontSize: 16,

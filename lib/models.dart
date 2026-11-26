@@ -173,29 +173,46 @@ class Episode {
 
   final int number;
   final String title;
+
+  /// Episode duration 'mm:ss' (progress-math fallback + the Home
+  /// hero's "N min"). From Kitsu `length` when Detail merged real
+  /// metadata; '24:00' is the placeholder default (a standard TV
+  /// length, not episode-specific data).
   final String duration;
 
-  /// 2-line synopsis shown on the episode card (M1 mock; M2 = real data).
+  /// Real per-episode synopsis from Kitsu (0.2.31). '' = unknown —
+  /// never faked (the M1 fake synopses are gone with the fake
+  /// titles below).
   final String synopsis;
 
-  /// Air date, e.g. "Oct 4, 2026".
+  /// Real air date from Kitsu, e.g. "Mar 27, 2021". '' = unknown —
+  /// never faked.
   final String airDate;
 
   /// True when a dubbed track exists (drives the Sub & Dub filter).
+  /// Placeholder default is true — unknown means "don't hide it",
+  /// the resolver is the authority on dub availability.
   final bool hasDub;
 
-  /// Per-episode thumbnail from AniList `streamingEpisodes` (0.2.9).
-  /// Null = AniList has no thumbnail for this episode → the card
+  /// Per-episode thumbnail from AniList `streamingEpisodes` (0.2.9)
+  /// or Kitsu (0.2.31).
+  /// Null = no thumbnail for this episode → the card
   /// falls back to the anime poster. Never faked or derived.
   final String? thumbnailUrl;
 
-  Episode copyWith({String? thumbnailUrl}) {
+  Episode copyWith({
+    String? title,
+    String? duration,
+    String? synopsis,
+    String? airDate,
+    String? thumbnailUrl,
+  }) {
     return Episode(
       number: number,
-      title: title,
-      duration: duration,
-      synopsis: synopsis,
-      airDate: airDate,
+      title: title ?? this.title,
+      duration: duration ?? this.duration,
+      synopsis: synopsis ?? this.synopsis,
+      airDate: airDate ?? this.airDate,
       hasDub: hasDub,
       thumbnailUrl: thumbnailUrl ?? this.thumbnailUrl,
     );
@@ -883,76 +900,28 @@ List<Anime> mockMovies() {
   ];
 }
 
+/// Placeholder episode list (0.2.31): NEUTRAL placeholders only —
+/// 'Episode N', no synopsis, no air date, '24:00' default duration.
+/// The fake rotating titles/synopses/dates from M1 ('Infiltration
+/// Protocol', 'Ghost in the Network', Sep 5 2026, ...) are GONE —
+/// they were shown as real episode data on EVERY season's list (the
+/// 0.2.30 phone test: S5 selected, count right at 25, cards all
+/// fake S1 data). Real metadata comes from Kitsu (KitsuEpisodes)
+/// and is merged in by Detail; when Kitsu has nothing, the list
+/// honestly shows 'Episode N'. Only the count comes from the anime.
 List<Episode> mockEpisodes(Anime anime) {
-  const List<String> titles = <String>[
-    'Infiltration Protocol',
-    'Ghost in the Network',
-    'Neon Blackout',
-    'The Codex Awakens',
-    'Crimson Oath',
-    'Silent Exchange',
-    'Blood Moon Rising',
-    'The Last Gate',
-  ];
-  const List<String> durations = <String>[
-    '23:12',
-    '24:05',
-    '22:58',
-    '24:31',
-    '23:47',
-    '24:02',
-    '23:19',
-    '24:44',
-  ];
-  const List<String> synopses = <String>[
-    'The crew sets sail for the cloud seas, but a storm on the horizon '
-        'has other plans.',
-    'A quiet exchange in the neon district reveals a secret no one was '
-        'ready to hear.',
-    'The gate opens at midnight, and the warden must choose who walks '
-        'through it.',
-    'Old debts come due as the rebellion reaches the capital walls.',
-    'A phantom thief strikes at dawn, and the treasure is not what '
-        'anyone expected.',
-    'Two rivals share one room for the night. Neither one sleeps.',
-  ];
   final int count = anime.episodeCount;
   return List<Episode>.generate(count, (int i) {
     final int n = i + 1;
     return Episode(
       number: n,
-      title: titles[i % titles.length],
-      duration: durations[i % durations.length],
-      synopsis: synopses[i % synopses.length],
-      airDate: _mockAirDate(n),
-      // Dubbed tracks lag behind: every 3rd episode is sub-only in M1.
-      hasDub: n % 3 != 0,
+      title: 'Episode $n',
+      duration: '24:00',
+      synopsis: '',
+      airDate: '',
+      hasDub: true,
     );
   });
-}
-
-/// Weekly air date starting Sep 5, 2026 (M1 mock): "Oct 4, 2026".
-String _mockAirDate(int episodeNumber) {
-  const List<String> months = <String>[
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
-  final DateTime d = DateTime(
-    2026,
-    9,
-    5,
-  ).add(Duration(days: (episodeNumber - 1) * 7));
-  return '${months[d.month - 1]} ${d.day}, ${d.year}';
 }
 
 /// Default Sources order: Miruro, AniKoto, AniSuge, AniKage,

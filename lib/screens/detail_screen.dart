@@ -7,6 +7,7 @@ import '../models.dart';
 import '../player/trailer_player.dart';
 import '../services/anilist_service.dart';
 import '../services/app_services.dart';
+import '../services/kitsu_episodes.dart';
 import '../services/miruro_resolver.dart';
 import '../settings_store.dart';
 import '../theme.dart';
@@ -88,6 +89,7 @@ class _DetailScreenState extends State<DetailScreen> {
     unawaited(_loadDetails());
     _seasonsFuture = _loadSeasons();
     unawaited(_loadEpisodeThumbnails());
+    unawaited(_loadEpisodeMetadata());
     if (widget.autoPlay) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         // 0.2.30: wait for the season chain so Continue Watching
@@ -140,7 +142,10 @@ class _DetailScreenState extends State<DetailScreen> {
       );
       if (needsEpisodes) _episodes = mockEpisodes(_anime);
     });
-    if (needsEpisodes) unawaited(_loadEpisodeThumbnails());
+    if (needsEpisodes) {
+      unawaited(_loadEpisodeThumbnails());
+      unawaited(_loadEpisodeMetadata());
+    }
   }
 
   /// Fetch the season chain for this anime (one GraphQL query when
@@ -200,6 +205,48 @@ class _DetailScreenState extends State<DetailScreen> {
     });
   }
 
+  /// Real per-season episode metadata from Kitsu (0.2.31): the list
+  /// was built from mockEpisodes, so every season showed the same
+  /// fake titles/dates — the 0.2.30 phone test proved it (S5
+  /// selected, count right at 25, cards all fake S1 data). Kitsu
+  /// maps the selected season's AniList id to its own entry and
+  /// returns real titles, synopses, air dates, thumbnails and
+  /// lengths, merged onto the placeholder list by episode number.
+  /// Best-effort — failure or no Kitsu entry = the neutral
+  /// 'Episode N' placeholders stay. The id guard drops a stale
+  /// response if the user switched seasons mid-fetch (same pattern
+  /// as _loadEpisodeThumbnails, but by id rather than object
+  /// identity — _loadSeasons rebuilds _anime with copyWith, which
+  /// would fail an identity check).
+  Future<void> _loadEpisodeMetadata() async {
+    final int? anilistId =
+        _anime.anilistId ?? await _services.anilist.resolveId(_anime.title);
+    if (anilistId == null) return;
+    final List<KitsuEpisodeMeta> metas =
+        await _services.kitsuEpisodes.fetchForAnilistId(
+      anilistId,
+      episodeCount: _anime.episodeCount,
+    );
+    if (!mounted || metas.isEmpty) return;
+    if (_anime.anilistId != null && _anime.anilistId != anilistId) return;
+    final Map<int, KitsuEpisodeMeta> byNumber = <int, KitsuEpisodeMeta>{
+      for (final KitsuEpisodeMeta meta in metas) meta.number: meta,
+    };
+    setState(() {
+      _episodes = _episodes.map((Episode ep) {
+        final KitsuEpisodeMeta? meta = byNumber[ep.number];
+        if (meta == null) return ep;
+        return ep.copyWith(
+          title: meta.title,
+          synopsis: meta.synopsis,
+          airDate: meta.airDate,
+          duration: meta.durationString,
+          thumbnailUrl: meta.thumbnailUrl,
+        );
+      }).toList();
+    });
+  }
+
   /// Switch the episode list to another season: load that season's
   /// own AniList entry and rebuild the episodes through the existing
   /// path (mockEpisodes + the same resolver). The banner, title,
@@ -224,8 +271,10 @@ class _DetailScreenState extends State<DetailScreen> {
       _episodes = mockEpisodes(next);
       _selectingSeason = false;
     });
-    // The new season has its own episode thumbnails.
+    // The new season has its own episode thumbnails (0.2.9) and
+    // its own real episode metadata from Kitsu (0.2.31).
     unawaited(_loadEpisodeThumbnails());
+    unawaited(_loadEpisodeMetadata());
   }
 
   @override

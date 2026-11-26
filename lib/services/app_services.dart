@@ -8,6 +8,7 @@ import 'animesama_resolver.dart';
 import 'anisuge_resolver.dart';
 import 'debrid_service.dart';
 import 'download_service.dart';
+import 'kitsu_episodes.dart';
 import 'miruro_resolver.dart';
 import 'oauth_service.dart';
 import 'provider_config.dart';
@@ -27,8 +28,10 @@ class AppServices {
     required this.airing,
     required this.airingNotifications,
     this.configService,
+    KitsuEpisodes? kitsuEpisodes,
   })  : anisuge = anisuge ?? AnisugeResolver(anilist: anilist),
         anikage = anikage ?? AnikageResolver(anilist: anilist),
+        kitsuEpisodes = kitsuEpisodes ?? KitsuEpisodes(),
         animesama = animesama ??
             AnimeSamaResolver(
               anilist: anilist,
@@ -85,6 +88,10 @@ class AppServices {
   /// subtitles on this source. Base URL from the remote provider
   /// config (`animesama` mirrors) with a bundled fallback.
   final AnimeSamaResolver animesama;
+
+  /// Real per-season episode metadata from Kitsu (0.2.31): titles,
+  /// synopses, air dates, thumbnails, lengths for the episode list.
+  final KitsuEpisodes kitsuEpisodes;
 
   final DebridService debrid;
   final OAuthService oauth;

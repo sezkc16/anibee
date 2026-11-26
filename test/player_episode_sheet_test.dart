@@ -107,10 +107,12 @@ void main() {
     expect(tester.getSize(title).height, lessThan(30));
 
     // Cards, not number boxes: EP badges + titles, same visuals as
-    // the Detail screen (mock episode 1 is 'Infiltration Protocol').
+    // the Detail screen (0.2.31: the placeholder title is the
+    // honest 'Episode 1' — the M1 fake 'Infiltration Protocol' is
+    // gone; real titles come from Kitsu on Detail).
     expect(find.byType(EpisodeCard), findsWidgets);
     expect(find.text('EP 1'), findsOneWidget);
-    expect(find.text('Infiltration Protocol'), findsOneWidget);
+    expect(find.text('Episode 1'), findsOneWidget);
 
     // 11 cards grow to the 0.55 cap (330pt of the 600pt test
     // viewport) and scroll: the last card appears after scrolling.
