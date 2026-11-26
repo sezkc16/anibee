@@ -177,6 +177,7 @@ class MiruroResolver {
         anime.title,
         episodeNumber,
         subDub,
+        seasonNumber: anime.seasonNumber,
       );
       if (stream != null) return stream;
       if (!fallback) {
@@ -233,6 +234,7 @@ class MiruroResolver {
       anime.title,
       episodeNumber,
       subDub,
+      seasonNumber: anime.seasonNumber,
     );
     if (anikoto != null) return anikoto;
     lastError ??= 'No sources found for episode $episodeNumber.';
@@ -261,14 +263,23 @@ class MiruroResolver {
     return null;
   }
 
-  /// Anikoto chain only, by title. Null on failure.
+  /// Anikoto chain only, by title. Null on failure. [seasonNumber]
+  /// (0.2.30) is the selected season's chain position — without it
+  /// every season resolves to S1, because every season shares the
+  /// AniList title and the site's bare title IS season 1.
   Future<ResolvedStream?> _tryAnikoto(
     String title,
     int episode,
-    String subDub,
-  ) async {
+    String subDub, {
+    int? seasonNumber,
+  }) async {
     try {
-      return await resolveAnikoto(title, episode, subDub);
+      return await resolveAnikoto(
+        title,
+        episode,
+        subDub,
+        seasonNumber: seasonNumber,
+      );
     } catch (_) {
       return null;
     }
@@ -486,8 +497,9 @@ class MiruroResolver {
   Future<ResolvedStream?> resolveAnikoto(
     String title,
     int episode,
-    String subDub,
-  ) async {
+    String subDub, {
+    int? seasonNumber,
+  }) async {
     // 1. Search anikoto.cz by title.
     final http.Response searchResp = await _client
         .get(
@@ -520,8 +532,19 @@ class MiruroResolver {
     }
     if (results.isEmpty) return null;
     final String normQ = normalizeTitle(title);
-    String? watchHref =
-        results
+    String? watchHref;
+    if (seasonNumber != null) {
+      // 0.2.30: every season shares the AniList title, so the bare
+      // title match below is always S1 — match the site's season
+      // suffix ("Title 2", "Title 5th Season", "Title Season 6")
+      // first. No season match here = fall through to the old
+      // rules, never a dead end.
+      watchHref = results
+          .where((r) => seasonTitleMatches(r.title, title, seasonNumber))
+          .map((r) => r.href)
+          .firstOrNull;
+    }
+    watchHref ??= results
             .where((r) => normalizeTitle(r.title) == normQ)
             .map((r) => r.href)
             .firstOrNull ??

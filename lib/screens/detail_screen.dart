@@ -68,6 +68,10 @@ class _DetailScreenState extends State<DetailScreen> {
   List<SeasonInfo> _seasons = <SeasonInfo>[];
   bool _selectingSeason = false;
 
+  /// In-flight season-chain load (0.2.30): autoPlay waits for it
+  /// so the season number is attached before resolving.
+  Future<void>? _seasonsFuture;
+
   /// Debrid source selected in the server sheet ('torbox' |
   /// 'realdebrid'), or null for a normal Miruro/Anikoto server.
   String? _selectedDebrid;
@@ -82,10 +86,17 @@ class _DetailScreenState extends State<DetailScreen> {
     _trailer = widget.player ?? TrailerPlayer();
     _episodes = mockEpisodes(_anime);
     unawaited(_loadDetails());
-    unawaited(_loadSeasons());
+    _seasonsFuture = _loadSeasons();
     unawaited(_loadEpisodeThumbnails());
     if (widget.autoPlay) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        // 0.2.30: wait for the season chain so Continue Watching
+        // resumes with the season number attached — without it the
+        // title-based resolvers play S1. Bounded: a slow chain
+        // must not stall playback.
+        try {
+          await _seasonsFuture?.timeout(const Duration(seconds: 8));
+        } catch (_) {}
         if (mounted && _episodes.isNotEmpty) _openFullPlayer();
       });
     }
@@ -147,7 +158,20 @@ class _DetailScreenState extends State<DetailScreen> {
       anilistId,
     );
     if (!mounted) return;
-    if (seasons.length > 1) setState(() => _seasons = seasons);
+    if (seasons.length > 1) {
+      // 0.2.30: heal the season number for entries opened from
+      // Search / Continue Watching, which never carried one —
+      // without it the title-based resolvers play S1.
+      final int? number = _anime.anilistId == null
+          ? null
+          : seasonNumberFor(_anime.anilistId!, seasons);
+      setState(() {
+        _seasons = seasons;
+        if (number != null && _anime.seasonNumber != number) {
+          _anime = _anime.copyWith(seasonNumber: number);
+        }
+      });
+    }
   }
 
   /// Per-episode thumbnails from AniList `streamingEpisodes` (0.2.9):
@@ -190,8 +214,13 @@ class _DetailScreenState extends State<DetailScreen> {
       TopNotification.show(context, 'Season load nahi hua — dobara try karo.');
       return;
     }
+    // 0.2.30: carry the chain position into the new entry — the
+    // resolvers need it to tell S2+ from S1 (same title).
+    final int at = _seasons.indexWhere((SeasonInfo s) => s.id == season.id);
     setState(() {
-      _anime = next;
+      _anime = next.copyWith(
+        seasonNumber: at >= 0 ? at + 1 : next.seasonNumber,
+      );
       _episodes = mockEpisodes(next);
       _selectingSeason = false;
     });

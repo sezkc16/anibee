@@ -399,30 +399,39 @@ class AnimeSamaResolver {
         .toList();
     if (candidates.isEmpty) return null;
 
-    // (1) Season number from the title variants.
-    final List<String> titles = <String>[anime.title];
-    try {
-      final int? anilistId =
-          anime.anilistId ??
-          (await _anilist.resolveIdDetailed(anime.title)).id;
-      final AnilistIdentity? identity = anilistId == null
-          ? null
-          : await _anilist.mediaIdentity(anilistId);
-      if (identity != null) {
-        for (final String t in identity.titles) {
-          if (!titles.contains(t)) titles.add(t);
+    // (1) Season number: the selected season's chain position
+    // (0.2.30 — AniList titles carry no season number, so parsing
+    // the title could never find it; the old title parse stays as
+    // a fallback for entries that never carried a number).
+    int? want = anime.seasonNumber;
+    if (want == null) {
+      final List<String> titles = <String>[anime.title];
+      try {
+        final int? anilistId =
+            anime.anilistId ??
+            (await _anilist.resolveIdDetailed(anime.title)).id;
+        final AnilistIdentity? identity = anilistId == null
+            ? null
+            : await _anilist.mediaIdentity(anilistId);
+        if (identity != null) {
+          for (final String t in identity.titles) {
+            if (!titles.contains(t)) titles.add(t);
+          }
         }
+      } catch (_) {
+        // Title variants are a best-effort hint; fall through.
       }
-    } catch (_) {
-      // Title variants are a best-effort hint; fall through.
+      for (final String t in titles) {
+        final RegExpMatch? m = RegExp(
+          r'(?:season|saison|part|cour)\s*(\d+)',
+          caseSensitive: false,
+        ).firstMatch(t);
+        if (m == null) continue;
+        want = int.parse(m.group(1)!);
+        break;
+      }
     }
-    for (final String t in titles) {
-      final RegExpMatch? m = RegExp(
-        r'(?:season|saison|part|cour)\s*(\d+)',
-        caseSensitive: false,
-      ).firstMatch(t);
-      if (m == null) continue;
-      final int want = int.parse(m.group(1)!);
+    if (want != null) {
       for (final AnimeSamaSeason s in candidates) {
         if (s.number == want) return s;
       }

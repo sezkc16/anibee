@@ -19,6 +19,7 @@ class Anime {
     this.nextEpisode,
     this.nextEpisodeIn,
     this.nextEpisodeAt,
+    this.seasonNumber,
   });
 
   final String id;
@@ -41,6 +42,15 @@ class Anime {
 
   /// MyAnimeList id (from AniList idMal). Needed for MAL list sync.
   final int? malId;
+
+  /// 1-based position of this entry in its AniList season chain
+  /// (0.2.30): "Season 2" of a show is chain position 2. Null =
+  /// unknown / single season. Title-based resolvers NEED it — every
+  /// season of a show shares the same AniList title, so a bare
+  /// title search can never tell S2+ from S1 and always plays S1.
+  /// Set by the Detail season selector / chain heal; carried into
+  /// every resolve and into Continue Watching entries.
+  final int? seasonNumber;
 
   /// Continue Watching state (null = not started).
   final int? currentEpisode;
@@ -69,6 +79,7 @@ class Anime {
     String? nextEpisodeIn,
     String? nextEpisodeAt,
     String? synopsis,
+    int? seasonNumber,
   }) {
     return Anime(
       id: id,
@@ -88,6 +99,7 @@ class Anime {
       nextEpisode: nextEpisode ?? this.nextEpisode,
       nextEpisodeIn: nextEpisodeIn ?? this.nextEpisodeIn,
       nextEpisodeAt: nextEpisodeAt ?? this.nextEpisodeAt,
+      seasonNumber: seasonNumber ?? this.seasonNumber,
     );
   }
 
@@ -108,6 +120,7 @@ class Anime {
       'malId': malId,
       'currentEpisode': currentEpisode,
       'minutesLeft': minutesLeft,
+      'seasonNumber': seasonNumber,
       'isSaved': isSaved,
       'nextEpisode': nextEpisode,
       'nextEpisodeIn': nextEpisodeIn,
@@ -139,6 +152,7 @@ class Anime {
       currentEpisode: (json['currentEpisode'] as num?)?.toInt(),
       minutesLeft: (json['minutesLeft'] as num?)?.toInt(),
       isSaved: json['isSaved'] as bool? ?? false,
+      seasonNumber: (json['seasonNumber'] as num?)?.toInt(),
       nextEpisode: (json['nextEpisode'] as num?)?.toInt(),
       nextEpisodeIn: json['nextEpisodeIn'] as String?,
       nextEpisodeAt: json['nextEpisodeAt'] as String?,

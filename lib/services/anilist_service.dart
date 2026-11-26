@@ -1196,6 +1196,59 @@ String normalizeTitle(String raw) {
       .trim();
 }
 
+/// Season number named in [text] ("season 5", "5th season",
+/// "part 2", "cour 1", or a trailing bare number like the "2" in
+/// "My Hero Academia 2"), or null when no season is named.
+/// Pure — unit-tested.
+int? seasonNumberInTitle(String text) {
+  final String t = normalizeTitle(text);
+  final RegExpMatch? m = RegExp(
+    r'(?:season\s+(\d+)|(\d+)(?:st|nd|rd|th)\s+season|part\s+(\d+)|cour\s+(\d+)|(\d+)\s*$)',
+  ).firstMatch(t);
+  if (m == null) return null;
+  final String? num = m.group(1) ??
+      m.group(2) ??
+      m.group(3) ??
+      m.group(4) ??
+      m.group(5);
+  return int.tryParse(num ?? '');
+}
+
+/// Does [siteTitle] name season [season] of the show whose plain
+/// title is [baseTitle]?
+///
+/// Title-based sites (anikoto.cz, anisuge.tv) list every season
+/// under the show's plain AniList title plus a suffix — "Title 2",
+/// "Title Season 2", "Title 2nd Season" / "Title 5th Season" — and
+/// the plain title itself IS season 1. Every season shares the
+/// same AniList title, so a bare title search can never tell them
+/// apart: without this, S2+ always resolves to S1 (0.2.30).
+/// Pure — unit-tested.
+bool seasonTitleMatches(String siteTitle, String baseTitle, int season) {
+  final String site = normalizeTitle(
+    siteTitle.replaceAll(RegExp(r'\s*\([^)]*\)'), ''),
+  );
+  final String base = normalizeTitle(baseTitle);
+  if (site.isEmpty || base.isEmpty || season < 1) return false;
+  if (site == base) {
+    // The base title itself may carry the season ("Attack on
+    // Titan Season 2") — then the bare site title IS that season,
+    // not S1. A number-less base title is S1.
+    return season == (seasonNumberInTitle(base) ?? 1);
+  }
+  if (!site.startsWith('$base ')) return false;
+  final String rest = site.substring(base.length + 1).trim();
+  if (season == 1) return false;
+  return seasonNumberInTitle(rest) == season;
+}
+
+/// 1-based position of [anilistId] in a season chain, or null
+/// when it is not in the chain. Pure — unit-tested.
+int? seasonNumberFor(int anilistId, List<SeasonInfo> chain) {
+  final int index = chain.indexWhere((SeasonInfo s) => s.id == anilistId);
+  return index < 0 ? null : index + 1;
+}
+
 class AniListException implements Exception {
   const AniListException(this.message);
   final String message;

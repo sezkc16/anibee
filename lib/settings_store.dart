@@ -29,6 +29,7 @@ class WatchEntry {
     this.rating = 0,
     this.genres = const <String>[],
     this.synopsis = '',
+    this.seasonNumber,
   });
 
   factory WatchEntry.fromJson(Map<String, dynamic> json) {
@@ -47,6 +48,7 @@ class WatchEntry {
               .toList() ??
           const <String>[],
       synopsis: json['synopsis'] as String? ?? '',
+      seasonNumber: (json['seasonNumber'] as num?)?.toInt(),
       episode: (json['episode'] as num?)?.toInt() ?? 1,
       positionSeconds: (json['position'] as num?)?.toDouble() ?? 0,
       durationSeconds: (json['duration'] as num?)?.toDouble() ?? 0,
@@ -66,6 +68,10 @@ class WatchEntry {
   final double rating;
   final List<String> genres;
   final String synopsis;
+
+  /// Season chain position (0.2.30) — carried into the resumed
+  /// anime so the title-based resolvers play the right season.
+  final int? seasonNumber;
   final int episode;
   final double positionSeconds;
   final double durationSeconds;
@@ -98,6 +104,7 @@ class WatchEntry {
       rating: rating,
       genres: genres,
       synopsis: synopsis,
+      seasonNumber: seasonNumber,
       episode: episode ?? this.episode,
       positionSeconds: positionSeconds ?? this.positionSeconds,
       durationSeconds: durationSeconds ?? this.durationSeconds,
@@ -117,6 +124,7 @@ class WatchEntry {
       'rating': rating,
       'genres': genres,
       'synopsis': synopsis,
+      'seasonNumber': seasonNumber,
       'episode': episode,
       'position': positionSeconds,
       'duration': durationSeconds,
@@ -138,6 +146,7 @@ class WatchEntry {
       posterUrl: posterUrl,
       currentEpisode: episode,
       minutesLeft: minutesLeft,
+      seasonNumber: seasonNumber,
     );
   }
 }
@@ -868,6 +877,7 @@ class SettingsStore extends ChangeNotifier {
         rating: anime.rating,
         genres: anime.genres,
         synopsis: anime.synopsis,
+        seasonNumber: anime.seasonNumber,
         episode: episode,
         positionSeconds: positionSeconds,
         durationSeconds: durationSeconds,

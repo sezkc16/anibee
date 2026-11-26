@@ -168,6 +168,10 @@ class AnisugeResolver {
   /// then the catalogue title) and return the best-matching watch
   /// URL. Parenthetical qualifiers ("(TV)") are stripped before
   /// comparing — the site appends them to display titles.
+  /// 0.2.30: two passes when [Anime.seasonNumber] is set — a
+  /// season-aware pass first (a bare title match is always S1, so
+  /// an early query must never short-circuit with the wrong
+  /// season), then the old behaviour as a fallback.
   Future<String?> _searchWatchUrl(Anime anime) async {
     final List<String> queries = <String>[];
     try {
@@ -186,6 +190,13 @@ class AnisugeResolver {
     } catch (_) {
       if (queries.isEmpty) queries.add(anime.title);
     }
+    final int? season = anime.seasonNumber;
+    if (season != null) {
+      for (final String q in queries) {
+        final String? url = await _filterOnce(q, seasonNumber: season);
+        if (url != null) return url;
+      }
+    }
     for (final String q in queries) {
       final String? url = await _filterOnce(q);
       if (url != null) return url;
@@ -193,7 +204,7 @@ class AnisugeResolver {
     return null;
   }
 
-  Future<String?> _filterOnce(String query) async {
+  Future<String?> _filterOnce(String query, {int? seasonNumber}) async {
     final http.Response resp = await _client
         .get(
           Uri.parse(
@@ -205,6 +216,16 @@ class AnisugeResolver {
     if (resp.statusCode != 200) return null;
     final List<AnisugeHit> hits = parseSearchResults(resp.body);
     if (hits.isEmpty) return null;
+    if (seasonNumber != null) {
+      // Season-aware only: no match for this query means "try the
+      // next query", never a fallback to the bare title (S1).
+      for (final AnisugeHit h in hits) {
+        if (seasonTitleMatches(h.title, query, seasonNumber)) {
+          return h.href;
+        }
+      }
+      return null;
+    }
     final String normQ = normalizeTitle(_stripParens(query));
     String? pick(bool Function(AnisugeHit) test) =>
         hits.where(test).map((AnisugeHit h) => h.href).firstOrNull;

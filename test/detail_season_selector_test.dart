@@ -5,7 +5,10 @@ import 'package:anibee/player/trailer_player.dart';
 import 'package:anibee/screens/detail_screen.dart';
 import 'package:anibee/services/airing_notifications.dart';
 import 'package:anibee/services/airing_service.dart';
+import 'package:anibee/services/anikage_resolver.dart';
 import 'package:anibee/services/anilist_service.dart';
+import 'package:anibee/services/animesama_resolver.dart';
+import 'package:anibee/services/anisuge_resolver.dart';
 import 'package:anibee/services/app_services.dart';
 import 'package:anibee/services/debrid_service.dart';
 import 'package:anibee/services/download_service.dart';
@@ -207,10 +210,33 @@ void main() {
     );
   }
 
-  AppServices servicesFor(AniListService anilist) {
+  AppServices servicesFor(
+    AniListService anilist, {
+    http.Client? streamClient,
+  }) {
+    // 0.2.30: with a streamClient every resolver is backed by it, so
+    // a resolve test never touches the real network — the mock 404s
+    // everything and the error dialog appears instead of the player.
     return AppServices(
       anilist: anilist,
-      miruro: MiruroResolver(anilist: anilist),
+      miruro: MiruroResolver(anilist: anilist, client: streamClient),
+      anisuge: streamClient == null
+          ? null
+          : AnisugeResolver(
+              client: streamClient,
+              anilist: anilist,
+              megaplay: MiruroResolver(client: streamClient),
+            ),
+      anikage: streamClient == null
+          ? null
+          : AnikageResolver(
+              client: streamClient,
+              anilist: anilist,
+              megaplay: MiruroResolver(client: streamClient),
+            ),
+      animesama: streamClient == null
+          ? null
+          : AnimeSamaResolver(client: streamClient, anilist: anilist),
       debrid: DebridService(),
       oauth: OAuthService(),
       downloads: DownloadService(),
@@ -279,4 +305,91 @@ void main() {
     // The episode list is still there (header is 'EPISODES').
     expect(find.text('EPISODES'), findsWidgets);
   });
+
+  testWidgets('tapping Season 2 switches the episode list to that season', (
+    WidgetTester tester,
+  ) async {
+    await pumpDetail(tester, servicesFor(mockAnilist()));
+    // S1: 138 episodes, first range 001-100, cell 100 present.
+    expect(find.text('001-100'), findsOneWidget);
+    expect(find.text('100'), findsOneWidget);
+    await tester.tap(find.text('Season 2'));
+    // _selectSeason fetches the S2 episode list async — wait for
+    // the S2 range label like pumpDetail waits for the selector.
+    for (int i = 0; i < 20; i++) {
+      if (find.text('001-025').evaluate().isNotEmpty) break;
+      await tester.runAsync(
+        () => Future.delayed(const Duration(milliseconds: 250)),
+      );
+      await tester.pump();
+    }
+    expect(find.text('001-025'), findsOneWidget);
+    expect(find.text('100'), findsNothing);
+    expect(find.text('25'), findsOneWidget);
+    // Back to S1 restores the S1 list.
+    await tester.tap(find.text('Season 1'));
+    for (int i = 0; i < 20; i++) {
+      if (find.text('001-100').evaluate().isNotEmpty) break;
+      await tester.runAsync(
+        () => Future.delayed(const Duration(milliseconds: 250)),
+      );
+      await tester.pump();
+    }
+    expect(find.text('001-100'), findsOneWidget);
+  });
+
+  testWidgets(
+    '0.2.30: tapping an S2 episode resolves with the S2 id, not S1',
+    (WidgetTester tester) async {
+      final List<String> requested = <String>[];
+      final MockClient streamClient = MockClient((http.Request req) async {
+        requested.add(req.url.toString());
+        // Every resolver 404s: the resolve ends null and the error
+        // dialog appears instead of the player — the requested
+        // justanime URL is the proof of which id was resolved.
+        return http.Response('not found', 404);
+      });
+      await pumpDetail(
+        tester,
+        servicesFor(mockAnilist(), streamClient: streamClient),
+      );
+      await tester.tap(find.text('Season 2'));
+      for (int i = 0; i < 20; i++) {
+        if (find.text('001-025').evaluate().isNotEmpty) break;
+        await tester.runAsync(
+          () => Future.delayed(const Duration(milliseconds: 250)),
+        );
+        await tester.pump();
+      }
+      expect(find.text('001-025'), findsOneWidget);
+      await tester.tap(find.text('1'));
+      for (int i = 0; i < 20; i++) {
+        if (requested.any(
+          (String u) => u.contains('core.justanime.to'),
+        )) {
+          break;
+        }
+        await tester.runAsync(
+          () => Future.delayed(const Duration(milliseconds: 250)),
+        );
+        await tester.pump();
+      }
+      expect(
+        requested,
+        contains(
+          'https://core.justanime.to/api/watch/21551/episode/1/megaplay',
+        ),
+      );
+      expect(
+        requested,
+        isNot(
+          contains(
+            'https://core.justanime.to/api/watch/21459/episode/1/megaplay',
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(find.text("Couldn't load episode"), findsOneWidget);
+    },
+  );
 }
